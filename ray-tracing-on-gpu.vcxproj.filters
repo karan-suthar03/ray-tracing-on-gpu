@@ -50,5 +50,8 @@
     <None Include="shaders\raytracer.comp">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="shaders\raytracer2.comp">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

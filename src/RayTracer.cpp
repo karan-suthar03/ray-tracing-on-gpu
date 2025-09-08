@@ -13,17 +13,25 @@ RayTracer::~RayTracer()
     delete computeShader;
 }
 
-void RayTracer::render()
+void RayTracer::render(const glm::vec3& cameraPos,
+    const glm::vec3& cameraTarget,
+    const glm::vec3& cameraUp)
 {
     computeShader->use();
-	// we are going to make worker groups with each of them containing 16 * 16 threads as defined in the compute shader
+
+    // passing camera uniforms
+    computeShader->setVec3("camPos", cameraPos);
+    computeShader->setVec3("camTarget", cameraTarget);
+    computeShader->setVec3("camUp", cameraUp);
+
+    // we are going to make worker groups with each of them containing 16 * 16 threads as defined in the compute shader
     // we are adding 15 to ensure we round up when the dimensions are not multiples of 16
 	// coordinates (id's which we are using as pixel cordinates) are not in the bounds of the size of the screen then the shader will automatically discard them
 	// as written in the compute shader
     GLuint workGroupsX = (width + 15) / 16;
     GLuint workGroupsY = (height + 15) / 16;
     computeShader->dispatchCompute(workGroupsX, workGroupsY, 1);
-    
+
 	// this is the barrier to ensure that the writes to the image have finished before we use it
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 }
@@ -45,5 +53,5 @@ void RayTracer::setupTexture()
 
 void RayTracer::setupShader()
 {
-    computeShader = new Shader("shaders/raytracer.comp");
+    computeShader = new Shader("shaders/raytracer2.comp");
 }

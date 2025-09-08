@@ -4,6 +4,7 @@
 #include <glad/glad.h>
 #include <string>
 #include <iostream>
+#include <glm/glm.hpp>
 
 class Shader
 {
@@ -14,8 +15,11 @@ public:
     
     void use() const;
     void setInt(const std::string& name, int value) const;
+    void setVec3(const std::string& name, const glm::vec3& value) const;
     
     void dispatchCompute(GLuint numGroupsX, GLuint numGroupsY, GLuint numGroupsZ) const;
+    
+    GLuint getID() const { return ID; }
     
 private:
     GLuint ID;

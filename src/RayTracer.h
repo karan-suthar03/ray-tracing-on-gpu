@@ -3,13 +3,16 @@
 
 #include "Shader.h"
 #include <glad/glad.h>
+#include <glm/glm.hpp>
 
 class RayTracer {
 public:
     RayTracer(GLuint width, GLuint height);
     ~RayTracer();
 
-    void render();
+    void render(const glm::vec3& cameraPos,
+        const glm::vec3& cameraTarget,
+        const glm::vec3& cameraUp);
     
     // Get the texture containing the rendered image
     GLuint getOutputTexture() const { return outputTexture; }

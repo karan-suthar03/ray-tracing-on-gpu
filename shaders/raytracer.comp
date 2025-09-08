@@ -19,7 +19,7 @@ void main()
     vec2 uv = vec2(float(texCoord.x) / float(texSize.x), float(texCoord.y) / float(texSize.y));
     
     vec3 color = vec3(1, 1, 0.5);
-    
+   
     // since the image is bounded and we called that barreer function, the variable in the ray tracer.cpp will automatically updated
     imageStore(imgOutput, texCoord, vec4(color, 1.0));
 }

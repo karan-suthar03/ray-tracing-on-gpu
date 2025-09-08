@@ -95,6 +95,14 @@ void Shader::setInt(const std::string &name, int value) const
     glUniform1i(glGetUniformLocation(ID, name.c_str()), value);
 }
 
+// utility function to set vec3 uniforms in the shader,
+// it is being used for camera positions but will be used in other things obviously
+// why im wrting so many comments though
+void Shader::setVec3(const std::string &name, const glm::vec3& value) const
+{
+    glUniform3f(glGetUniformLocation(ID, name.c_str()), value.x, value.y, value.z);
+}
+
 void Shader::dispatchCompute(GLuint numGroupsX, GLuint numGroupsY, GLuint numGroupsZ) const
 {    
     glDispatchCompute(numGroupsX, numGroupsY, numGroupsZ);
