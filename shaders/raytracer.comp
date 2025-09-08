@@ -1,0 +1,25 @@
+#version 430 core
+// each workgroup have 16*16 threads
+layout (local_size_x = 16, local_size_y = 16) in;
+
+// getting the image from slot 0
+layout (rgba32f, binding = 0) uniform image2D imgOutput;
+
+void main()
+{
+    // the thread id is kind of a pixel cordinates for us since the diamentions of the work groups are 2 diamentional
+    ivec2 texCoord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 texSize = imageSize(imgOutput);
+    
+    // there will be some obvious cases as i said before in the raytracer.cpp that some coordinates will be discarded
+    if(texCoord.x >= texSize.x || texCoord.y >= texSize.y)
+        return;
+
+    // convert pixel cordinates of integiers to normalized uv cordinates for fregment shader to simply display
+    vec2 uv = vec2(float(texCoord.x) / float(texSize.x), float(texCoord.y) / float(texSize.y));
+    
+    vec3 color = vec3(1, 1, 0.5);
+    
+    // since the image is bounded and we called that barreer function, the variable in the ray tracer.cpp will automatically updated
+    imageStore(imgOutput, texCoord, vec4(color, 1.0));
+}
