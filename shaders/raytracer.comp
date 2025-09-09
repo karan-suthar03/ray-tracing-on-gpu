@@ -11,6 +11,7 @@ uniform vec3 camUp;
 uniform int frameCount;
 uniform vec2 resolution;
 uniform int numSpheres;
+uniform int numTriangles;
 
 struct Ray {
     vec3 origin;
@@ -24,8 +25,19 @@ struct Sphere {
     int materialType;
 };
 
+struct Triangle {
+    vec3 v0, v1, v2;
+    vec3 normal;
+    vec3 color;
+    int materialType;
+};
+
 layout(std430, binding = 1) buffer Spheres {
     float spheresData[];
+};
+
+layout(std430, binding = 2) buffer Triangles {
+    float trianglesData[];
 };
 
 #define MAX_BOUNCES 10
@@ -74,7 +86,7 @@ vec3 randomHemisphere(vec3 normal, inout uint seed) {
     return normalize(sampleDir);
 }
 
-bool intersectSphere(Ray ray, Sphere sphere, out float t, out vec3 normal) {
+bool intersectSphere(Ray ray, Sphere sphere, float t_min, float t_max, out float t, out vec3 normal) {
     vec3 oc = ray.origin - sphere.center;
     float b = dot(oc, ray.dir);
     float c = dot(oc, oc) - sphere.radius * sphere.radius;
@@ -82,11 +94,48 @@ bool intersectSphere(Ray ray, Sphere sphere, out float t, out vec3 normal) {
     if (h < 0.0) return false;
     h = sqrt(h);
     t = -b - h;
-    if (t < 0.0) t = -b + h;
-    if (t < 0.0) return false;
+    if (t < t_min || t > t_max) {
+        t = -b + h;
+        if (t < t_min || t > t_max) return false;
+    }
 
     vec3 hitPoint = ray.origin + ray.dir * t;
     normal = normalize(hitPoint - sphere.center);
+    return true;
+}
+
+// the exact same ray triangle intersection just like we did in the CPU based ray tracer
+bool intersectTriangle(Ray ray, Triangle triangle, float t_min, float t_max, out float t, out vec3 normal) {
+    const float epsilon = 1e-7;
+
+    vec3 edge1 = triangle.v1 - triangle.v0;
+    vec3 edge2 = triangle.v2 - triangle.v0;
+
+    vec3 pvec = cross(ray.dir, edge2);
+    float det = dot(edge1, pvec);
+
+    if (det > -epsilon && det < epsilon)
+        return false;
+
+    float inv_det = 1.0 / det;
+    vec3 tvec = ray.origin - triangle.v0;
+    float u = inv_det * dot(tvec, pvec);
+
+    if (u < 0.0 || u > 1.0)
+        return false;
+
+    vec3 qvec = cross(tvec, edge1);
+    float v = inv_det * dot(ray.dir, qvec);
+
+    if (v < 0.0 || u + v > 1.0)
+        return false;
+
+    t = inv_det * dot(edge2, qvec);
+
+    if (t < t_min || t > t_max)
+        return false;
+
+    normal = triangle.normal;
     return true;
 }
 
@@ -98,7 +147,9 @@ vec3 trace(Ray ray, inout uint seed) {
         float closestT = 1e20;
         vec3 normal;
         Sphere hitSphere;
+        Triangle hitTriangle;
         bool hitSomething = false;
+        bool hitSphereObj = false;
 
         for(int i = 0; i < numSpheres; ++i) {
             int base = i * 8;
@@ -109,11 +160,33 @@ vec3 trace(Ray ray, inout uint seed) {
             Sphere sphere = Sphere(center, radius, color, materialType);
             float t;
             vec3 n;
-            if (intersectSphere(ray, sphere, t, n) && t < closestT) {
+            if (intersectSphere(ray, sphere, 0.0, closestT, t, n) && t < closestT) {
                 closestT = t;
                 normal = n;
                 hitSphere = sphere;
                 hitSomething = true;
+                hitSphereObj = true;
+            }
+        }
+
+        // Check triangles
+        for(int i = 0; i < numTriangles; ++i) {
+            int base = i * 16; // 9 vertices + 3 normal + 3 color + 1 material = 16 floats per triangle
+            vec3 v0 = vec3(trianglesData[base], trianglesData[base+1], trianglesData[base+2]);
+            vec3 v1 = vec3(trianglesData[base+3], trianglesData[base+4], trianglesData[base+5]);
+            vec3 v2 = vec3(trianglesData[base+6], trianglesData[base+7], trianglesData[base+8]);
+            vec3 triNormal = vec3(trianglesData[base+9], trianglesData[base+10], trianglesData[base+11]);
+            vec3 color = vec3(trianglesData[base+12], trianglesData[base+13], trianglesData[base+14]);
+            int materialType = int(trianglesData[base+15]);
+            Triangle triangle = Triangle(v0, v1, v2, triNormal, color, materialType);
+            float t;
+            vec3 n;
+            if (intersectTriangle(ray, triangle, 0.0, closestT, t, n) && t < closestT) {
+                closestT = t;
+                normal = n;
+                hitTriangle = triangle;
+                hitSomething = true;
+                hitSphereObj = false;
             }
         }
 
@@ -130,13 +203,23 @@ vec3 trace(Ray ray, inout uint seed) {
         vec3 hitPoint = ray.origin + ray.dir * closestT + normal * bias;
 
         // different functions soon for different materials
-        if (hitSphere.materialType == 1) {
-            accumColor += throughput * hitSphere.color;
+        int materialType;
+        vec3 objectColor;
+        if (hitSphereObj) {
+            materialType = hitSphere.materialType;
+            objectColor = hitSphere.color;
+        } else {
+            materialType = hitTriangle.materialType;
+            objectColor = hitTriangle.color;
+        }
+
+        if (materialType == 1) {
+            accumColor += throughput * objectColor;
             break;
         } else {
             vec3 newDir = randomHemisphere(normal, seed);
             ray = Ray(hitPoint, newDir);
-            throughput *= hitSphere.color;
+            throughput *= objectColor;
         }
     }
 

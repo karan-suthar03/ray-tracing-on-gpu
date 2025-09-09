@@ -13,6 +13,13 @@ struct Sphere {
     int materialType; // 0 = Lambertian, 1 = Light
 };
 
+struct Triangle {
+    glm::vec3 v0, v1, v2;
+    glm::vec3 normal;
+    glm::vec3 color;
+    int materialType; // 0 = Lambertian, 1 = Light
+};
+
 class RayTracer {
 public:
     RayTracer(GLuint width, GLuint height);
@@ -34,6 +41,13 @@ public:
     // Get current spheres
     const std::vector<Sphere>& getSpheres() const { return spheres; }
 
+    void setTriangles(const std::vector<Triangle>& newTriangles) {
+        triangles = newTriangles;
+        trianglesChanged = true;
+    }
+
+    const std::vector<Triangle>& getTriangles() const { return triangles; }
+
 private:
     GLuint width;
     GLuint height;
@@ -53,10 +67,17 @@ private:
     GLuint ssbo;
     bool spheresChanged;
 
+    std::vector<Triangle> triangles;
+    std::vector<float> trianglesData;
+    GLuint trianglesSSBO;
+    bool trianglesChanged;
+
     void setupTexture();
     void setupShader();
     void setupSSBO();
     void updateSSBO();
+    void setupTrianglesSSBO();
+    void updateTrianglesSSBO();
 };
 
 #endif // RAY_TRACER_H
