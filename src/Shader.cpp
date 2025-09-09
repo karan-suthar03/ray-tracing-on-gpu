@@ -95,6 +95,12 @@ void Shader::setInt(const std::string &name, int value) const
     glUniform1i(glGetUniformLocation(ID, name.c_str()), value);
 }
 
+// for the resolution
+void Shader::setVec2(const std::string &name, const glm::vec2& value) const
+{
+    glUniform2f(glGetUniformLocation(ID, name.c_str()), value.x, value.y);
+}
+
 // utility function to set vec3 uniforms in the shader,
 // it is being used for camera positions but will be used in other things obviously
 // why im wrting so many comments though

@@ -1,7 +1,7 @@
 #include "RayTracer.h"
 
 RayTracer::RayTracer(GLuint width, GLuint height)
-    : width(width), height(height)
+    : width(width), height(height), frameCount(0), prevCamPos(0.0f), prevCamTarget(0.0f), prevCamUp(0.0f)
 {
     setupTexture();
     setupShader();
@@ -17,12 +17,22 @@ void RayTracer::render(const glm::vec3& cameraPos,
     const glm::vec3& cameraTarget,
     const glm::vec3& cameraUp)
 {
+    // Reset frame count if camera has moved
+    if (cameraPos != prevCamPos || cameraTarget != prevCamTarget || cameraUp != prevCamUp) {
+        frameCount = 0;
+    }
+    prevCamPos = cameraPos;
+    prevCamTarget = cameraTarget;
+    prevCamUp = cameraUp;
+
     computeShader->use();
 
     // passing camera uniforms
     computeShader->setVec3("camPos", cameraPos);
     computeShader->setVec3("camTarget", cameraTarget);
     computeShader->setVec3("camUp", cameraUp);
+    computeShader->setInt("frameCount", frameCount);
+    computeShader->setVec2("resolution", glm::vec2(width, height));
 
     // we are going to make worker groups with each of them containing 16 * 16 threads as defined in the compute shader
     // we are adding 15 to ensure we round up when the dimensions are not multiples of 16
@@ -34,6 +44,8 @@ void RayTracer::render(const glm::vec3& cameraPos,
 
 	// this is the barrier to ensure that the writes to the image have finished before we use it
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+    frameCount++;
 }
 
 void RayTracer::setupTexture()
@@ -53,5 +65,5 @@ void RayTracer::setupTexture()
 
 void RayTracer::setupShader()
 {
-    computeShader = new Shader("shaders/raytracer2.comp");
+    computeShader = new Shader("shaders/raytracer3.comp");
 }

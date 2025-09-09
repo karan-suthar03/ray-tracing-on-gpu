@@ -23,6 +23,14 @@ private:
     GLuint outputTexture;
     Shader* computeShader;
 
+    // Frame count for accumulation
+    int frameCount;
+
+    // Previous camera parameters to detect movement
+    glm::vec3 prevCamPos;
+    glm::vec3 prevCamTarget;
+    glm::vec3 prevCamUp;
+
     void setupTexture();
     void setupShader();
 };

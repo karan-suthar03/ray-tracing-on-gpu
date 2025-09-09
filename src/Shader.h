@@ -15,6 +15,7 @@ public:
     
     void use() const;
     void setInt(const std::string& name, int value) const;
+    void setVec2(const std::string& name, const glm::vec2& value) const;
     void setVec3(const std::string& name, const glm::vec3& value) const;
     
     void dispatchCompute(GLuint numGroupsX, GLuint numGroupsY, GLuint numGroupsZ) const;

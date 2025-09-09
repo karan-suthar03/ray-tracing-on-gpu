@@ -1,0 +1,140 @@
+#version 430 core
+
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout (rgba32f, binding = 0) uniform image2D imgOutput;
+
+uniform vec3 camPos;
+uniform vec3 camTarget;
+uniform vec3 camUp;
+uniform int frameCount;
+uniform vec2 resolution;
+
+struct Ray {
+    vec3 origin;
+    vec3 dir;
+};
+
+struct Sphere {
+    vec3 center;
+    float radius;
+    vec3 color;
+};
+
+#define MAX_BOUNCES 5
+#define NUM_SPHERES 3
+
+Sphere spheres[NUM_SPHERES];
+
+void setupScene() {
+    spheres[0] = Sphere(vec3(0.0, 0.0, 0.0), 0.5, vec3(1.0, 0.0, 0.0));
+    spheres[1] = Sphere(vec3(0.0, -1.0, 0.0), 0.5, vec3(0.0, 0.0, 1.0));
+    spheres[2] = Sphere(vec3(0.0, -100.5, 0.0), 100.0, vec3(0.5));
+}
+
+float rand(inout uint seed) {
+    seed ^= seed << 13;
+    seed ^= seed >> 17;
+    seed ^= seed << 5;
+    return float(seed) / 4294967295.0;
+}
+
+vec3 randomUnitSphere(vec3 normal, inout uint seed) {
+    float u1 = rand(seed);
+    float u2 = rand(seed);
+    float r = sqrt(u1);
+    float theta = 2.0 * 3.14159265 * u2;
+
+    vec3 tangent = normalize(cross(normal, abs(normal.x) < 0.5 ? vec3(1,0,0) : vec3(0,1,0)));
+    vec3 bitangent = cross(normal, tangent);
+
+    vec3 sampleDir = r * cos(theta) * tangent + r * sin(theta) * bitangent + sqrt(1.0 - u1) * normal;
+    return normalize(sampleDir);
+}
+
+bool intersectSphere(Ray ray, Sphere sphere, out float t, out vec3 normal) {
+    vec3 oc = ray.origin - sphere.center;
+    float b = dot(oc, ray.dir);
+    float c = dot(oc, oc) - sphere.radius * sphere.radius;
+    float h = b*b - c;
+    if (h < 0.0) return false;
+    h = sqrt(h);
+    t = -b - h;
+    if (t < 0.0) t = -b + h;
+    if (t < 0.0) return false;
+
+    vec3 hitPoint = ray.origin + ray.dir * t;
+    normal = normalize(hitPoint - sphere.center);
+    return true;
+}
+
+vec3 trace(Ray ray, inout uint seed) {
+    vec3 throughput = vec3(1.0);
+    vec3 accumColor = vec3(0.0);
+
+    for(int bounce = 0; bounce < MAX_BOUNCES; ++bounce) {
+        float closestT = 1e20;
+        vec3 normal;
+        Sphere hitSphere;
+        bool hitSomething = false;
+
+        for(int i = 0; i < NUM_SPHERES; ++i) {
+            float t;
+            vec3 n;
+            if (intersectSphere(ray, spheres[i], t, n) && t < closestT) {
+                closestT = t;
+                normal = n;
+                hitSphere = spheres[i];
+                hitSomething = true;
+            }
+        }
+
+        if(!hitSomething) {
+            vec3 unitDir = normalize(ray.dir);
+            vec3 sky = vec3(1);
+            accumColor += throughput * sky;
+            break;
+        }
+
+        float bias = 1e-3 * length(ray.origin - (ray.origin + ray.dir * closestT));
+        vec3 hitPoint = ray.origin + ray.dir * closestT + normal * bias;
+
+        vec3 newDir = randomUnitSphere(normal, seed);
+        ray = Ray(hitPoint, newDir);
+
+        throughput *= hitSphere.color;
+    }
+
+    return accumColor;
+}
+
+vec3 getRayDir(vec2 uv) {
+    vec3 forward = normalize(camTarget - camPos);
+    vec3 right = normalize(cross(forward, camUp));
+    vec3 up = cross(right, forward);
+    float fov = 1.0;
+    float aspect = resolution.x / resolution.y;
+    return normalize(forward + uv.x * aspect * fov * right + uv.y * fov * up);
+}
+
+void main() {
+    ivec2 texCoord = ivec2(gl_GlobalInvocationID.xy);
+    if(texCoord.x >= int(resolution.x) || texCoord.y >= int(resolution.y)) return;
+
+    setupScene();
+
+    uint seed = uint(texCoord.x*1973 + texCoord.y*9277 + frameCount*26699);
+
+    float randX = rand(seed);
+    float randY = rand(seed);
+    vec2 uv = (vec2(texCoord) + vec2(randX, randY)) / resolution * 2.0 - 1.0;
+
+    Ray camRay = Ray(camPos, getRayDir(uv));
+
+    vec3 col = trace(camRay, seed);
+
+    vec4 prev = imageLoad(imgOutput, texCoord);
+    vec3 finalColor = (prev.rgb * float(frameCount) + col) / float(frameCount + 1);
+
+    imageStore(imgOutput, texCoord, vec4(finalColor, 1.0));
+}
