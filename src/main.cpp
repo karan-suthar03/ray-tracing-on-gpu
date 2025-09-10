@@ -26,7 +26,7 @@ GLuint quadIndices[] = {
 
 
 // camera settings
-glm::vec3 camPos = glm::vec3(0.0f, 0.0f, 2.0f);
+glm::vec3 camPos = glm::vec3(0.0f, 1.5f, 2.0f);
 glm::vec3 camFront = glm::vec3(0.0f, 0.0f, -1.0f);
 glm::vec3 camUp = glm::vec3(0.0f, 1.0f, 0.0f);
 float yaw = -90.0f;

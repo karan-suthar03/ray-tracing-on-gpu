@@ -12,7 +12,6 @@
 .vs/
 .vscode/
 
-*.obj
 *.exe
 *.pdb
 *.ilk

@@ -6,18 +6,21 @@
 #include <glm/glm.hpp>
 #include <vector>
 
+struct Material {
+    glm::vec3 color;
+    int type; // 0 = Lambertian, 1 = Light
+};
+
 struct Sphere {
     glm::vec3 center;
     float radius;
-    glm::vec3 color;
-    int materialType; // 0 = Lambertian, 1 = Light
+    Material material;
 };
 
 struct Triangle {
     glm::vec3 v0, v1, v2;
     glm::vec3 normal;
-    glm::vec3 color;
-    int materialType; // 0 = Lambertian, 1 = Light
+    Material material;
 };
 
 class RayTracer {
@@ -47,6 +50,8 @@ public:
     }
 
     const std::vector<Triangle>& getTriangles() const { return triangles; }
+
+    bool loadOBJ(const std::string& filename, const Material& material = {{0.8f, 0.8f, 0.8f}, 0});
 
 private:
     GLuint width;

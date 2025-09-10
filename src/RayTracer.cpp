@@ -1,5 +1,8 @@
 #include "RayTracer.h"
 #include <vector>
+#include <iostream>
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "tiny_obj_loader.h"
 
 RayTracer::RayTracer(GLuint width, GLuint height)
     : width(width), height(height), frameCount(0), prevCamPos(0.0f), prevCamTarget(0.0f), prevCamUp(0.0f), spheresChanged(true), trianglesChanged(true)
@@ -10,99 +13,125 @@ RayTracer::RayTracer(GLuint width, GLuint height)
         //{{0.0f, -100.5f, 0.0f}, 100.0f, {0.5f, 0.5f, 0.5f}, 0} // Lambertian
     };
 
-    Triangle leftWall1, leftWall2, rightWall1, rightWall2, backWall1, backWall2, floor1, floor2, ceiling1, ceiling2;
+    Triangle leftWall1, leftWall2, rightWall1, rightWall2, backWall1, backWall2, floor1, floor2, ceiling1, ceiling2, frontWall1, frontWall2;
     
     // Left wall (x = -3, normal pointing right) - 2 triangles
     leftWall1.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
     leftWall1.v1 = glm::vec3(-3.0f, 3.0f, -3.0f);
     leftWall1.v2 = glm::vec3(-3.0f, 3.0f, 3.0f);
     leftWall1.normal = glm::vec3(1.0f, 0.0f, 0.0f);
-    leftWall1.color = glm::vec3(0.8f, 0.2f, 0.2f); // Red
-    leftWall1.materialType = 0;
+    leftWall1.material = {{0.8f, 0.2f, 0.2f}, 0}; // Red, Lambertian
     
     leftWall2.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
     leftWall2.v1 = glm::vec3(-3.0f, 3.0f, 3.0f);
     leftWall2.v2 = glm::vec3(-3.0f, -3.0f, 3.0f);
     leftWall2.normal = glm::vec3(1.0f, 0.0f, 0.0f);
-    leftWall2.color = glm::vec3(0.8f, 0.2f, 0.2f); // Red
-    leftWall2.materialType = 0;
+    leftWall2.material = {{0.8f, 0.2f, 0.2f}, 0}; // Red, Lambertian
     
     // Right wall (x = 3, normal pointing left) - 2 triangles
     rightWall1.v0 = glm::vec3(3.0f, -3.0f, -3.0f);
     rightWall1.v1 = glm::vec3(3.0f, 3.0f, 3.0f);
     rightWall1.v2 = glm::vec3(3.0f, 3.0f, -3.0f);
     rightWall1.normal = glm::vec3(-1.0f, 0.0f, 0.0f);
-    rightWall1.color = glm::vec3(0.2f, 0.8f, 0.2f); // Green
-    rightWall1.materialType = 0;
+    rightWall1.material = {{0.2f, 0.8f, 0.2f}, 0}; // Green, Lambertian
     
     rightWall2.v0 = glm::vec3(3.0f, -3.0f, -3.0f);
     rightWall2.v1 = glm::vec3(3.0f, -3.0f, 3.0f);
     rightWall2.v2 = glm::vec3(3.0f, 3.0f, 3.0f);
     rightWall2.normal = glm::vec3(-1.0f, 0.0f, 0.0f);
-    rightWall2.color = glm::vec3(0.2f, 0.8f, 0.2f); // Green
-    rightWall2.materialType = 0;
+    rightWall2.material = {{0.2f, 0.8f, 0.2f}, 0}; // Green, Lambertian
     
     // Back wall (z = -3, normal pointing forward) - 2 triangles
     backWall1.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
     backWall1.v1 = glm::vec3(3.0f, 3.0f, -3.0f);
     backWall1.v2 = glm::vec3(-3.0f, 3.0f, -3.0f);
     backWall1.normal = glm::vec3(0.0f, 0.0f, 1.0f);
-    backWall1.color = glm::vec3(0.2f, 0.2f, 0.8f); // Blue
-    backWall1.materialType = 0;
+    backWall1.material = {{0.2f, 0.2f, 0.8f}, 0}; // Blue, Lambertian
     
     backWall2.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
     backWall2.v1 = glm::vec3(3.0f, -3.0f, -3.0f);
     backWall2.v2 = glm::vec3(3.0f, 3.0f, -3.0f);
     backWall2.normal = glm::vec3(0.0f, 0.0f, 1.0f);
-    backWall2.color = glm::vec3(0.2f, 0.2f, 0.8f); // Blue
-    backWall2.materialType = 0;
+    backWall2.material = {{0.2f, 0.2f, 0.8f}, 0}; // Blue, Lambertian
     
     // Floor (y = -3, normal pointing up) - 2 triangles
     floor1.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
     floor1.v1 = glm::vec3(-3.0f, -3.0f, 3.0f);  // Swapped v1 and v2
     floor1.v2 = glm::vec3(3.0f, -3.0f, 3.0f);   // Swapped v1 and v2
     floor1.normal = glm::vec3(0.0f, 1.0f, 0.0f); // Pointing up
-    floor1.color = glm::vec3(0.8f, 0.8f, 0.8f); // Gray
-    floor1.materialType = 0;
+    floor1.material = {{0.8f, 0.8f, 0.8f}, 0}; // Gray, Lambertian
     
     floor2.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
     floor2.v1 = glm::vec3(3.0f, -3.0f, 3.0f);   // Swapped v1 and v2
     floor2.v2 = glm::vec3(3.0f, -3.0f, -3.0f);  // Swapped v1 and v2
     floor2.normal = glm::vec3(0.0f, 1.0f, 0.0f); // Pointing up
-    floor2.color = glm::vec3(0.8f, 0.8f, 0.8f); // Gray
-    floor2.materialType = 0;
+    floor2.material = {{0.8f, 0.8f, 0.8f}, 0}; // Gray, Lambertian
     
     // Ceiling (y = 3, normal pointing down) - 2 triangles
     ceiling1.v0 = glm::vec3(-3.0f, 3.0f, -3.0f);
     ceiling1.v1 = glm::vec3(3.0f, 3.0f, 3.0f);  // Swapped v1 and v2
     ceiling1.v2 = glm::vec3(-3.0f, 3.0f, 3.0f); // Swapped v1 and v2
     ceiling1.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
-    ceiling1.color = glm::vec3(0.8f, 0.8f, 0.8f); // Gray
-    ceiling1.materialType = 0;
+    ceiling1.material = {{0.8f, 0.8f, 0.8f}, 0}; // Gray, Lambertian
     
     ceiling2.v0 = glm::vec3(-3.0f, 3.0f, -3.0f);
     ceiling2.v1 = glm::vec3(3.0f, 3.0f, -3.0f);  // Back to original
     ceiling2.v2 = glm::vec3(3.0f, 3.0f, 3.0f); // Back to original
     ceiling2.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
-    ceiling2.color = glm::vec3(0.8f, 0.8f, 0.8f); // Gray
-    ceiling2.materialType = 0;
+    ceiling2.material = {{0.8f, 0.8f, 0.8f}, 0}; // Gray, Lambertian
 
     Triangle light1, light2;
     light1.v0 = glm::vec3(-1.0f, 2.99f, -1.0f);
     light1.v1 = glm::vec3(1.0f, 2.99f, -1.0f);
     light1.v2 = glm::vec3(1.0f, 2.99f, 1.0f);
     light1.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
-    light1.color = glm::vec3(10.0f, 10.0f, 10.0f); // Bright white
-    light1.materialType = 1; // Light
+    light1.material = {{10.0f, 10.0f, 10.0f}, 1}; // Bright white, Light
 
     light2.v0 = glm::vec3(-1.0f, 2.99f, -1.0f);
     light2.v1 = glm::vec3(1.0f, 2.99f, 1.0f);
     light2.v2 = glm::vec3(-1.0f, 2.99f, 1.0f);
     light2.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
-    light2.color = glm::vec3(10.0f, 10.0f, 10.0f); // Bright white
-    light2.materialType = 1; // Light
+    light2.material = {{10.0f, 10.0f, 10.0f}, 1}; // Bright white, Light
 
-    triangles = {leftWall1, leftWall2, rightWall1, rightWall2, backWall1, backWall2, floor1, floor2, ceiling1, ceiling2, light1, light2};
+    // Front wall (z = 3, normal pointing backward) - 2 triangles
+    frontWall1.v0 = glm::vec3(-3.0f, -3.0f, 3.0f);
+    frontWall1.v1 = glm::vec3(-3.0f, 3.0f, 3.0f);
+    frontWall1.v2 = glm::vec3(3.0f, 3.0f, 3.0f);
+    frontWall1.normal = glm::vec3(0.0f, 0.0f, -1.0f);
+    frontWall1.material = {{0.8f, 0.8f, 0.2f}, 0}; // Yellow, Lambertian
+
+    frontWall2.v0 = glm::vec3(-3.0f, -3.0f, 3.0f);
+    frontWall2.v1 = glm::vec3(3.0f, 3.0f, 3.0f);
+    frontWall2.v2 = glm::vec3(3.0f, -3.0f, 3.0f);
+    frontWall2.normal = glm::vec3(0.0f, 0.0f, -1.0f);
+    frontWall2.material = {{0.8f, 0.8f, 0.2f}, 0}; // Yellow, Lambertian
+
+    triangles = {
+        leftWall1, leftWall2,
+        rightWall1, rightWall2,
+        backWall1, backWall2,
+        floor1, floor2,
+        ceiling1, ceiling2,
+        frontWall1, frontWall2,
+        light1, light2
+    };
+
+    for (auto& tri : triangles) {
+		tri.v0.y += 3.0f;
+		tri.v1.y += 3.0f;
+		tri.v2.y += 3.0f;
+	}
+
+    // Load the cube OBJ file
+    Material cubeMaterial = {{0.5f, 0.8f, 0.3f}, 0};
+    if (!loadOBJ("cube.OBJ", cubeMaterial)) {
+        std::cerr << "Failed to load cube.OBJ" << std::endl;
+    }
+
+    //Material bunnyMaterial = { {1.0f,1.0f, 1.0f}, 0 };
+    //if (!loadOBJ("bunny2.obj", bunnyMaterial)) {
+    //    std::cerr << "Failed to load bunny.obj" << std::endl;
+    //}
 
     setupTexture();
     setupShader();
@@ -186,10 +215,10 @@ void RayTracer::setupSSBO()
         spheresData.push_back(s.center.y);
         spheresData.push_back(s.center.z);
         spheresData.push_back(s.radius);
-        spheresData.push_back(s.color.x);
-        spheresData.push_back(s.color.y);
-        spheresData.push_back(s.color.z);
-        spheresData.push_back(float(s.materialType)); // material type
+        spheresData.push_back(s.material.color.x);
+        spheresData.push_back(s.material.color.y);
+        spheresData.push_back(s.material.color.z);
+        spheresData.push_back(float(s.material.type)); // material type
     }
     glGenBuffers(1, &ssbo);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
@@ -208,10 +237,10 @@ void RayTracer::updateSSBO()
             spheresData.push_back(s.center.y);
             spheresData.push_back(s.center.z);
             spheresData.push_back(s.radius);
-            spheresData.push_back(s.color.x);
-            spheresData.push_back(s.color.y);
-            spheresData.push_back(s.color.z);
-            spheresData.push_back(float(s.materialType));
+            spheresData.push_back(s.material.color.x);
+            spheresData.push_back(s.material.color.y);
+            spheresData.push_back(s.material.color.z);
+            spheresData.push_back(float(s.material.type));
         }
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
         glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, spheresData.size() * sizeof(float), spheresData.data());
@@ -241,11 +270,11 @@ void RayTracer::setupTrianglesSSBO()
         trianglesData.push_back(t.normal.y);
         trianglesData.push_back(t.normal.z);
         // color
-        trianglesData.push_back(t.color.x);
-        trianglesData.push_back(t.color.y);
-        trianglesData.push_back(t.color.z);
+        trianglesData.push_back(t.material.color.x);
+        trianglesData.push_back(t.material.color.y);
+        trianglesData.push_back(t.material.color.z);
         // material type
-        trianglesData.push_back(float(t.materialType));
+        trianglesData.push_back(float(t.material.type));
     }
     glGenBuffers(1, &trianglesSSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, trianglesSSBO);
@@ -277,15 +306,120 @@ void RayTracer::updateTrianglesSSBO()
             trianglesData.push_back(t.normal.y);
             trianglesData.push_back(t.normal.z);
             // color
-            trianglesData.push_back(t.color.x);
-            trianglesData.push_back(t.color.y);
-            trianglesData.push_back(t.color.z);
+            trianglesData.push_back(t.material.color.x);
+            trianglesData.push_back(t.material.color.y);
+            trianglesData.push_back(t.material.color.z);
             // material type
-            trianglesData.push_back(float(t.materialType));
+            trianglesData.push_back(float(t.material.type));
         }
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, trianglesSSBO);
         glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, trianglesData.size() * sizeof(float), trianglesData.data());
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
         trianglesChanged = false;
     }
+}
+
+bool RayTracer::loadOBJ(const std::string& filename, const Material& material) {
+    tinyobj::attrib_t attrib{};
+    std::vector<tinyobj::shape_t> shapes{};
+    std::vector<tinyobj::material_t> materials{};
+    std::string warn, err;
+
+    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename.c_str());
+
+    if (!warn.empty()) {
+        std::cout << "Warning: " << warn << std::endl;
+    }
+
+    if (!err.empty()) {
+        std::cerr << "Error: " << err << std::endl;
+        return false;
+    }
+
+    if (!ret) {
+        std::cerr << "Failed to load OBJ file: " << filename << std::endl;
+        return false;
+    }
+
+    // Process each shape
+    for (const auto& shape : shapes) {
+        size_t index_offset = 0;
+        // Process each face
+        for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++) {
+            int fv = shape.mesh.num_face_vertices[f];
+            if (fv != 3) {
+                // Skip non-triangles for now
+                index_offset += fv;
+                continue;
+            }
+
+            // Get indices for the three vertices
+            tinyobj::index_t idx0 = shape.mesh.indices[index_offset + 0];
+            tinyobj::index_t idx1 = shape.mesh.indices[index_offset + 1];
+            tinyobj::index_t idx2 = shape.mesh.indices[index_offset + 2];
+
+            // Get vertex positions
+            glm::vec3 v0(attrib.vertices[3 * idx0.vertex_index + 0],
+                        attrib.vertices[3 * idx0.vertex_index + 1],
+                        attrib.vertices[3 * idx0.vertex_index + 2]);
+            glm::vec3 v1(attrib.vertices[3 * idx1.vertex_index + 0],
+                        attrib.vertices[3 * idx1.vertex_index + 1],
+                        attrib.vertices[3 * idx1.vertex_index + 2]);
+            glm::vec3 v2(attrib.vertices[3 * idx2.vertex_index + 0],
+                        attrib.vertices[3 * idx2.vertex_index + 1],
+                        attrib.vertices[3 * idx2.vertex_index + 2]);
+
+            // // Scale the model
+            // float scale = 1.0f;
+            // if (filename == "bunny.obj") {
+            //     scale = 5.0f;
+            // } else if (filename == "cube.OBJ") {
+            //     scale = 2.0f;
+            // }
+            // v0 *= scale;
+            // v1 *= scale;
+            // v2 *= scale;
+
+
+            // Get or compute normal
+            glm::vec3 normal(0.0f);
+            if (idx0.normal_index >= 0 && idx1.normal_index >= 0 && idx2.normal_index >= 0) {
+                // Use provided normals
+                glm::vec3 n0(attrib.normals[3 * idx0.normal_index + 0],
+                            attrib.normals[3 * idx0.normal_index + 1],
+                            attrib.normals[3 * idx0.normal_index + 2]);
+                glm::vec3 n1(attrib.normals[3 * idx1.normal_index + 0],
+                            attrib.normals[3 * idx1.normal_index + 1],
+                            attrib.normals[3 * idx1.normal_index + 2]);
+                glm::vec3 n2(attrib.normals[3 * idx2.normal_index + 0],
+                            attrib.normals[3 * idx2.normal_index + 1],
+                            attrib.normals[3 * idx2.normal_index + 2]);
+                // Average the normals
+                normal = glm::normalize((n0 + n1 + n2) / 3.0f);
+            } else {
+                // Compute normal from vertices
+                glm::vec3 edge1 = v1 - v0;
+                glm::vec3 edge2 = v2 - v0;
+                normal = glm::normalize(glm::cross(edge1, edge2));
+            }
+
+            // Create triangle
+            Triangle tri;
+            tri.v0 = v0;
+            tri.v1 = v1;
+            tri.v2 = v2;
+            tri.normal = normal;
+            tri.material = material;
+
+            // Add to triangles vector
+            triangles.push_back(tri);
+
+            index_offset += fv;
+        }
+    }
+
+    trianglesChanged = true;
+    std::cout << "Loaded " << triangles.size() << " triangles from " << filename << std::endl;
+    
+    return true;
 }
