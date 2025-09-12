@@ -1,0 +1,326 @@
+#version 430 core
+// each workgroup have 16*16 threads
+layout (local_size_x = 16, local_size_y = 16) in;
+
+// getting the image from slot 0
+layout (rgba32f, binding = 0) uniform image2D imgOutput;
+
+uniform vec3 camPos;
+uniform vec3 camTarget;
+uniform vec3 camUp;
+uniform int frameCount;
+uniform vec2 resolution;
+uniform int numSpheres;
+uniform int numTriangles;
+
+struct Ray {
+    vec3 origin;
+    vec3 dir;
+};
+
+struct Material {
+    vec3 color;
+    int type;
+};
+
+struct Sphere {
+    vec3 center;
+    float radius;
+    Material material;
+};
+
+struct Triangle {
+    vec3 v0, v1, v2;
+    vec3 normal;
+    Material material;
+};
+
+layout(std430, binding = 1) buffer Spheres {
+    float spheresData[];
+};
+
+layout(std430, binding = 2) buffer Vertices {
+    float verticesData[];
+};
+
+layout(std430, binding = 3) buffer TriangleData {
+    float triangleData[];
+};
+
+#define MAX_BOUNCES 10
+#define HUE_MAX_BOUNCES 15
+
+uint wang_hash(uint seed) {
+    seed = (seed ^ 61u) ^ (seed >> 16u);
+    seed *= 9u;
+    seed = seed ^ (seed >> 4u);
+    seed *= 0x27d4eb2du;
+    seed = seed ^ (seed >> 15u);
+    return seed;
+}
+
+uint generate_seed(uvec2 pixel, uint frame, uint invocation_id) {
+    uint seed = pixel.x;
+    seed = wang_hash(seed ^ pixel.y);
+    seed = wang_hash(seed ^ frame);
+    seed = wang_hash(seed ^ invocation_id);
+    seed = wang_hash(seed ^ uint(gl_WorkGroupID.x));
+    seed = wang_hash(seed ^ uint(gl_WorkGroupID.y));
+    return seed;
+}
+
+float RandomValue(inout uint state) {
+    state = wang_hash(state);
+    state = state * 747796405u + 2891336453u;
+    uint result = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    result = (result >> 22u) ^ result;
+    return result / 4294967295.0;
+}
+
+float RandomFloat(inout uint state) {
+    return RandomValue(state);
+}
+
+float RandomFloatRange(inout uint state, float min_val, float max_val) {
+    return min_val + (max_val - min_val) * RandomValue(state);
+}
+
+vec2 RandomVec2(inout uint state) {
+    return vec2(RandomValue(state), RandomValue(state));
+}
+
+vec3 RandomVec3(inout uint state) {
+    return vec3(RandomValue(state), RandomValue(state), RandomValue(state));
+}
+
+vec3 randomUnitSphere(vec3 normal, inout uint seed) {
+    float u1 = RandomValue(seed);
+    float u2 = RandomValue(seed);
+    
+    float r = sqrt(u1);
+    float theta = 2.0 * 3.14159265 * u2;
+    
+    vec3 tangent = normalize(cross(normal, abs(normal.x) < 0.5 ? vec3(1,0,0) : vec3(0,1,0)));
+    vec3 bitangent = cross(normal, tangent);
+
+    vec3 sampleDir = r * cos(theta) * tangent + r * sin(theta) * bitangent + sqrt(1.0 - u1) * normal;
+    return normalize(sampleDir);
+}
+
+vec3 randomHemisphere(vec3 normal, inout uint seed) {
+    float u1 = RandomValue(seed);
+    float u2 = RandomValue(seed);
+    
+    float r = sqrt(u1);
+    float theta = 2.0 * 3.14159265 * u2;
+    
+    vec3 tangent = normalize(cross(normal, abs(normal.x) < 0.5 ? vec3(1,0,0) : vec3(0,1,0)));
+    vec3 bitangent = cross(normal, tangent);
+
+    vec3 sampleDir = r * cos(theta) * tangent + r * sin(theta) * bitangent + sqrt(1.0 - u1) * normal;
+    return normalize(sampleDir);
+}
+
+bool intersectSphere(Ray ray, Sphere sphere, float t_min, float t_max, out float t, out vec3 normal) {
+    vec3 oc = ray.origin - sphere.center;
+    float b = dot(oc, ray.dir);
+    float c = dot(oc, oc) - sphere.radius * sphere.radius;
+    float h = b*b - c;
+    if (h < 0.0) return false;
+    h = sqrt(h);
+    t = -b - h;
+    if (t < t_min || t > t_max) {
+        t = -b + h;
+        if (t < t_min || t > t_max) return false;
+    }
+
+    vec3 hitPoint = ray.origin + ray.dir * t;
+    normal = normalize(hitPoint - sphere.center);
+    return true;
+}
+
+// the exact same ray triangle intersection just like we did in the CPU based ray tracer
+bool intersectTriangle(Ray ray, Triangle triangle, float t_min, float t_max, out float t, out vec3 normal) {
+    const float epsilon = 1e-7;
+
+    vec3 edge1 = triangle.v1 - triangle.v0;
+    vec3 edge2 = triangle.v2 - triangle.v0;
+
+    vec3 pvec = cross(ray.dir, edge2);
+    float det = dot(edge1, pvec);
+
+    if (det > -epsilon && det < epsilon)
+        return false;
+
+    // Backface culling: if det < 0, the triangle is backfacing
+    if (det < 0.0)
+        return false;
+
+    float inv_det = 1.0 / det;
+    vec3 tvec = ray.origin - triangle.v0;
+    float u = inv_det * dot(tvec, pvec);
+
+    if (u < 0.0 || u > 1.0)
+        return false;
+
+    vec3 qvec = cross(tvec, edge1);
+    float v = inv_det * dot(ray.dir, qvec);
+
+    if (v < 0.0 || u + v > 1.0)
+        return false;
+
+    t = inv_det * dot(edge2, qvec);
+
+    if (t < t_min || t > t_max)
+        return false;
+
+    normal = triangle.normal;
+    return true;
+}
+
+vec3 hueToRGB(float t) {
+    float r = t;
+    float g = 0.0;
+    float b = 1.0 - t;
+    return clamp(vec3(r, g, b), 0.0, 1.0);
+}
+
+vec3 trace(Ray ray, inout uint seed) {
+    vec3 throughput = vec3(1.0);
+    int bounceCount = 0;
+
+    for(int bounce = 0; bounce < MAX_BOUNCES; ++bounce) {
+        bounceCount++;
+        float closestT = 1e20;
+        vec3 normal;
+        Sphere hitSphere;
+        Triangle hitTriangle;
+        bool hitSomething = false;
+        bool hitSphereObj = false;
+
+        for(int i = 0; i < numSpheres; ++i) {
+            int base = i * 8;
+            vec3 center = vec3(spheresData[base], spheresData[base+1], spheresData[base+2]);
+            float radius = spheresData[base+3];
+            vec3 color = vec3(spheresData[base+4], spheresData[base+5], spheresData[base+6]);
+            int materialType = int(spheresData[base+7]);
+            Sphere sphere = Sphere(center, radius, Material(color, materialType));
+            float t;
+            vec3 n;
+            if (intersectSphere(ray, sphere, 0.0, closestT, t, n) && t < closestT) {
+                closestT = t;
+                normal = n;
+                hitSphere = sphere;
+                hitSomething = true;
+                hitSphereObj = true;
+            }
+        }
+
+        // Check triangles
+        for(int i = 0; i < numTriangles; ++i) {
+            int base = i * 10; // 10 floats per triangle: i0,i1,i2,nx,ny,nz,cx,cy,cz,mt
+            
+            uint i0 = uint(triangleData[base]);
+            uint i1 = uint(triangleData[base + 1]);
+            uint i2 = uint(triangleData[base + 2]);
+            
+            int vBase0 = int(i0) * 3;
+            int vBase1 = int(i1) * 3;
+            int vBase2 = int(i2) * 3;
+            
+            vec3 v0 = vec3(verticesData[vBase0], verticesData[vBase0+1], verticesData[vBase0+2]);
+            vec3 v1 = vec3(verticesData[vBase1], verticesData[vBase1+1], verticesData[vBase1+2]);
+            vec3 v2 = vec3(verticesData[vBase2], verticesData[vBase2+1], verticesData[vBase2+2]);
+            
+            vec3 triNormal = vec3(triangleData[base+3], triangleData[base+4], triangleData[base+5]);
+            vec3 color = vec3(triangleData[base+6], triangleData[base+7], triangleData[base+8]);
+            int materialType = int(triangleData[base+9]);
+            
+            Triangle triangle;
+            triangle.v0 = v0;
+            triangle.v1 = v1;
+            triangle.v2 = v2;
+            triangle.normal = triNormal;
+            triangle.material.color = color;
+            triangle.material.type = materialType;
+            float t;
+            vec3 n;
+            if (intersectTriangle(ray, triangle, 0.001, closestT, t, n) && t < closestT) {
+                closestT = t;
+                normal = n;
+                hitTriangle = triangle;
+                hitSomething = true;
+                hitSphereObj = false;
+            }
+        }
+
+        if(!hitSomething) {
+            return hueToRGB(float(bounceCount) / float(HUE_MAX_BOUNCES));
+        }
+
+        float bias = 1e-10 * length(ray.origin - (ray.origin + ray.dir * closestT));
+        vec3 hitPoint = ray.origin + ray.dir * closestT + normal * bias;
+
+        // different functions soon for different materials
+        int materialType;
+        vec3 objectColor;
+        if (hitSphereObj) {
+            materialType = hitSphere.material.type;
+            objectColor = hitSphere.material.color;
+        } else {
+            materialType = hitTriangle.material.type;
+            objectColor = hitTriangle.material.color;
+        }
+
+        if (materialType == 1) {
+            return hueToRGB(float(bounceCount) / float(HUE_MAX_BOUNCES));
+        } else {
+            vec3 newDir = randomHemisphere(normal, seed);
+            ray = Ray(hitPoint, newDir);
+            throughput *= objectColor;
+        }
+    }
+    return hueToRGB(float(bounceCount) / float(HUE_MAX_BOUNCES));
+}
+
+vec3 getRayDir(vec2 uv) {
+    vec3 forward = normalize(camTarget - camPos);
+    vec3 right = normalize(cross(forward, camUp));
+    vec3 up = cross(right, forward);
+    float fov = 1.0;
+    float aspect = resolution.x / resolution.y;
+    return normalize(forward + uv.x * aspect * fov * right + uv.y * fov * up);
+}
+
+void main() {
+    ivec2 texCoord = ivec2(gl_GlobalInvocationID.xy);
+    if(texCoord.x >= int(resolution.x) || texCoord.y >= int(resolution.y)) return;
+
+    // Generate unique seed for this pixel and frame with maximum entropy
+    uint base_seed = generate_seed(uvec2(texCoord), uint(frameCount), gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * uint(resolution.x));
+    
+    const int numSamples = 10;
+    vec3 col = vec3(0.0);
+    
+    for(int i = 0; i < numSamples; i++){
+        // Create unique seed for each sample with additional entropy
+        uint sample_seed = wang_hash(base_seed + uint(i) + uint(frameCount) * 7919u);
+        
+        // Generate random offsets for anti-aliasing
+        float randX = RandomValue(sample_seed);
+        float randY = RandomValue(sample_seed);
+        vec2 uv = (vec2(texCoord) + vec2(randX, randY)) / resolution * 2.0 - 1.0;
+
+        Ray camRay = Ray(camPos, getRayDir(uv));
+
+        col += trace(camRay, sample_seed);
+    }
+    col /= float(numSamples);
+
+    vec3 finalColor = col;
+
+    vec4 prev = imageLoad(imgOutput, texCoord);
+    vec3 accumulatedColor = (prev.rgb * float(frameCount) + finalColor) / float(frameCount + 1);
+
+    imageStore(imgOutput, texCoord, vec4(accumulatedColor, 1.0));
+}

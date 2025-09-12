@@ -155,6 +155,7 @@
     <ClInclude Include="src\Shader.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="shaders\heatmap.comp" />
     <None Include="shaders\raytracer2.comp" />
     <None Include="shaders\quad.frag" />
     <None Include="shaders\quad.vert" />
