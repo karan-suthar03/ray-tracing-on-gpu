@@ -101,6 +101,7 @@ int main()
         return -1;
     }
     glfwMakeContextCurrent(window);
+    glfwSwapInterval(0);  // Disable V-sync
     glfwSetCursorPosCallback(window, mouse_callback);
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
@@ -162,6 +163,10 @@ int main()
 
         // compute the ray traced image
         rayTracer.render(camPos, camPos + camFront, camUp);
+
+        float fps = 1.0f / deltaTime;
+        std::string title = "FPS:" + std::to_string(fps);
+        glfwSetWindowTitle(window, title.c_str());
 
         glClear(GL_COLOR_BUFFER_BIT);
         

@@ -5,7 +5,7 @@
 #include "tiny_obj_loader.h"
 
 RayTracer::RayTracer(GLuint width, GLuint height)
-    : width(width), height(height), frameCount(0), prevCamPos(0.0f), prevCamTarget(0.0f), prevCamUp(0.0f), spheresChanged(true), trianglesChanged(true)
+    : width(width), height(height), frameCount(0), prevCamPos(0.0f), prevCamTarget(0.0f), prevCamUp(0.0f), spheresChanged(true), meshChanged(true)
 {
     spheres = {
         //{{0.0f, 0.0f, 0.0f}, 0.5f, {1.0f, 0.0f, 0.0f}, 0}, // Lambertian
@@ -13,137 +13,27 @@ RayTracer::RayTracer(GLuint width, GLuint height)
         //{{0.0f, -100.5f, 0.0f}, 100.0f, {0.5f, 0.5f, 0.5f}, 0} // Lambertian
     };
 
-    Triangle leftWall1, leftWall2, rightWall1, rightWall2, backWall1, backWall2, floor1, floor2, ceiling1, ceiling2, frontWall1, frontWall2;
+    mesh.clear();
     
-    // Left wall (x = -3, normal pointing right) - 2 triangles
-    leftWall1.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
-    leftWall1.v1 = glm::vec3(-3.0f, 3.0f, -3.0f);
-    leftWall1.v2 = glm::vec3(-3.0f, 3.0f, 3.0f);
-    leftWall1.normal = glm::vec3(1.0f, 0.0f, 0.0f);
-    leftWall1.material = {{0.8f, 0.2f, 0.2f}, 0}; // Red, Lambertian
-    
-    leftWall2.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
-    leftWall2.v1 = glm::vec3(-3.0f, 3.0f, 3.0f);
-    leftWall2.v2 = glm::vec3(-3.0f, -3.0f, 3.0f);
-    leftWall2.normal = glm::vec3(1.0f, 0.0f, 0.0f);
-    leftWall2.material = {{0.8f, 0.2f, 0.2f}, 0}; // Red, Lambertian
-    
-    // Right wall (x = 3, normal pointing left) - 2 triangles
-    rightWall1.v0 = glm::vec3(3.0f, -3.0f, -3.0f);
-    rightWall1.v1 = glm::vec3(3.0f, 3.0f, 3.0f);
-    rightWall1.v2 = glm::vec3(3.0f, 3.0f, -3.0f);
-    rightWall1.normal = glm::vec3(-1.0f, 0.0f, 0.0f);
-    rightWall1.material = {{0.2f, 0.8f, 0.2f}, 0}; // Green, Lambertian
-    
-    rightWall2.v0 = glm::vec3(3.0f, -3.0f, -3.0f);
-    rightWall2.v1 = glm::vec3(3.0f, -3.0f, 3.0f);
-    rightWall2.v2 = glm::vec3(3.0f, 3.0f, 3.0f);
-    rightWall2.normal = glm::vec3(-1.0f, 0.0f, 0.0f);
-    rightWall2.material = {{0.2f, 0.8f, 0.2f}, 0}; // Green, Lambertian
-    
-    // Back wall (z = -3, normal pointing forward) - 2 triangles
-    backWall1.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
-    backWall1.v1 = glm::vec3(3.0f, 3.0f, -3.0f);
-    backWall1.v2 = glm::vec3(-3.0f, 3.0f, -3.0f);
-    backWall1.normal = glm::vec3(0.0f, 0.0f, 1.0f);
-    backWall1.material = {{0.2f, 0.2f, 0.8f}, 0}; // Blue, Lambertian
-    
-    backWall2.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
-    backWall2.v1 = glm::vec3(3.0f, -3.0f, -3.0f);
-    backWall2.v2 = glm::vec3(3.0f, 3.0f, -3.0f);
-    backWall2.normal = glm::vec3(0.0f, 0.0f, 1.0f);
-    backWall2.material = {{0.2f, 0.2f, 0.8f}, 0}; // Blue, Lambertian
-    
-    // Floor (y = -3, normal pointing up) - 2 triangles
-    floor1.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
-    floor1.v1 = glm::vec3(-3.0f, -3.0f, 3.0f);  // Swapped v1 and v2
-    floor1.v2 = glm::vec3(3.0f, -3.0f, 3.0f);   // Swapped v1 and v2
-    floor1.normal = glm::vec3(0.0f, 1.0f, 0.0f); // Pointing up
-    floor1.material = {{0.8f, 0.8f, 0.8f}, 0}; // Gray, Lambertian
-    
-    floor2.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
-    floor2.v1 = glm::vec3(3.0f, -3.0f, 3.0f);   // Swapped v1 and v2
-    floor2.v2 = glm::vec3(3.0f, -3.0f, -3.0f);  // Swapped v1 and v2
-    floor2.normal = glm::vec3(0.0f, 1.0f, 0.0f); // Pointing up
-    floor2.material = {{0.8f, 0.8f, 0.8f}, 0}; // Gray, Lambertian
-    
-    // Ceiling (y = 3, normal pointing down) - 2 triangles
-    ceiling1.v0 = glm::vec3(-3.0f, 3.0f, -3.0f);
-    ceiling1.v1 = glm::vec3(3.0f, 3.0f, 3.0f);  // Swapped v1 and v2
-    ceiling1.v2 = glm::vec3(-3.0f, 3.0f, 3.0f); // Swapped v1 and v2
-    ceiling1.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
-    ceiling1.material = {{0.8f, 0.8f, 0.8f}, 0}; // Gray, Lambertian
-    
-    ceiling2.v0 = glm::vec3(-3.0f, 3.0f, -3.0f);
-    ceiling2.v1 = glm::vec3(3.0f, 3.0f, -3.0f);  // Back to original
-    ceiling2.v2 = glm::vec3(3.0f, 3.0f, 3.0f); // Back to original
-    ceiling2.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
-    ceiling2.material = {{0.8f, 0.8f, 0.8f}, 0}; // Gray, Lambertian
-
-    Triangle light1, light2;
-    light1.v0 = glm::vec3(-1.0f, 2.99f, -1.0f);
-    light1.v1 = glm::vec3(1.0f, 2.99f, -1.0f);
-    light1.v2 = glm::vec3(1.0f, 2.99f, 1.0f);
-    light1.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
-    light1.material = {{10.0f, 10.0f, 10.0f}, 1}; // Bright white, Light
-
-    light2.v0 = glm::vec3(-1.0f, 2.99f, -1.0f);
-    light2.v1 = glm::vec3(1.0f, 2.99f, 1.0f);
-    light2.v2 = glm::vec3(-1.0f, 2.99f, 1.0f);
-    light2.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
-    light2.material = {{10.0f, 10.0f, 10.0f}, 1}; // Bright white, Light
-
-    // Front wall (z = 3, normal pointing backward) - 2 triangles
-    frontWall1.v0 = glm::vec3(-3.0f, -3.0f, 3.0f);
-    frontWall1.v1 = glm::vec3(-3.0f, 3.0f, 3.0f);
-    frontWall1.v2 = glm::vec3(3.0f, 3.0f, 3.0f);
-    frontWall1.normal = glm::vec3(0.0f, 0.0f, -1.0f);
-    frontWall1.material = {{0.8f, 0.8f, 0.2f}, 0}; // Yellow, Lambertian
-
-    frontWall2.v0 = glm::vec3(-3.0f, -3.0f, 3.0f);
-    frontWall2.v1 = glm::vec3(3.0f, 3.0f, 3.0f);
-    frontWall2.v2 = glm::vec3(3.0f, -3.0f, 3.0f);
-    frontWall2.normal = glm::vec3(0.0f, 0.0f, -1.0f);
-    frontWall2.material = {{0.8f, 0.8f, 0.2f}, 0}; // Yellow, Lambertian
-
-    triangles = {
-        leftWall1, leftWall2,
-        rightWall1, rightWall2,
-        backWall1, backWall2,
-        floor1, floor2,
-        ceiling1, ceiling2,
-        frontWall1, frontWall2,
-        light1, light2
-    };
-
-    for (auto& tri : triangles) {
-		tri.v0.y += 3.0f;
-		tri.v1.y += 3.0f;
-		tri.v2.y += 3.0f;
-	}
-
-    // Load the cube OBJ file
+    createCornellBox();
     Material cubeMaterial = {{0.5f, 0.8f, 0.3f}, 0};
-    if (!loadOBJ("cube.OBJ", cubeMaterial)) {
-        std::cerr << "Failed to load cube.OBJ" << std::endl;
-    }
+    loadOBJIndexed("cube.OBJ", cubeMaterial);
 
-    //Material bunnyMaterial = { {1.0f,1.0f, 1.0f}, 0 };
-    //if (!loadOBJ("bunny2.obj", bunnyMaterial)) {
-    //    std::cerr << "Failed to load bunny.obj" << std::endl;
-    //}
+    Material bunnyMaterial = {{0.0f, 1.0f, 1.0f}, 0};
+    loadOBJIndexed("bunny2.obj", bunnyMaterial);
 
     setupTexture();
     setupShader();
     setupSSBO();
-    setupTrianglesSSBO();
+    setupIndexedSSBOs();
 }
 
 RayTracer::~RayTracer()
 {
     glDeleteTextures(1, &outputTexture);
     glDeleteBuffers(1, &ssbo);
-    glDeleteBuffers(1, &trianglesSSBO);
+    glDeleteBuffers(1, &verticesSSBO);
+    glDeleteBuffers(1, &triangleDataSSBO);
     delete computeShader;
 }
 
@@ -160,7 +50,7 @@ void RayTracer::render(const glm::vec3& cameraPos,
     prevCamUp = cameraUp;
 
     updateSSBO();
-    updateTrianglesSSBO();
+    updateIndexedSSBOs();
 
     computeShader->use();
 
@@ -171,7 +61,7 @@ void RayTracer::render(const glm::vec3& cameraPos,
     computeShader->setInt("frameCount", frameCount);
     computeShader->setVec2("resolution", glm::vec2(width, height));
     computeShader->setInt("numSpheres", static_cast<int>(spheres.size()));
-    computeShader->setInt("numTriangles", static_cast<int>(triangles.size()));
+    computeShader->setInt("numTriangles", static_cast<int>(mesh.getTriangleCount()));
 
     // we are going to make worker groups with each of them containing 16 * 16 threads as defined in the compute shader
     // we are adding 15 to ensure we round up when the dimensions are not multiples of 16
@@ -249,77 +139,163 @@ void RayTracer::updateSSBO()
     }
 }
 
-void RayTracer::setupTrianglesSSBO()
-{
-    trianglesData.clear();
-    for (const auto& t : triangles) {
-        // v0
-        trianglesData.push_back(t.v0.x);
-        trianglesData.push_back(t.v0.y);
-        trianglesData.push_back(t.v0.z);
-        // v1
-        trianglesData.push_back(t.v1.x);
-        trianglesData.push_back(t.v1.y);
-        trianglesData.push_back(t.v1.z);
-        // v2
-        trianglesData.push_back(t.v2.x);
-        trianglesData.push_back(t.v2.y);
-        trianglesData.push_back(t.v2.z);
-        // normal
-        trianglesData.push_back(t.normal.x);
-        trianglesData.push_back(t.normal.y);
-        trianglesData.push_back(t.normal.z);
-        // color
-        trianglesData.push_back(t.material.color.x);
-        trianglesData.push_back(t.material.color.y);
-        trianglesData.push_back(t.material.color.z);
-        // material type
-        trianglesData.push_back(float(t.material.type));
+void RayTracer::setupIndexedSSBOs() {
+    verticesData.clear();
+    for (const auto& vertex : mesh.vertices) {
+        verticesData.push_back(vertex.x);
+        verticesData.push_back(vertex.y);
+        verticesData.push_back(vertex.z);
     }
-    glGenBuffers(1, &trianglesSSBO);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, trianglesSSBO);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, trianglesData.size() * sizeof(float), trianglesData.data(), GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, trianglesSSBO);
+
+    triangleData.clear();
+    for (size_t i = 0; i < mesh.normals.size(); ++i) {
+
+        triangleData.push_back(float(mesh.indices[i * 3]));
+        triangleData.push_back(float(mesh.indices[i * 3 + 1]));
+        triangleData.push_back(float(mesh.indices[i * 3 + 2]));
+
+        triangleData.push_back(mesh.normals[i].x);
+        triangleData.push_back(mesh.normals[i].y);
+        triangleData.push_back(mesh.normals[i].z);
+
+        triangleData.push_back(mesh.materials[i].color.x);
+        triangleData.push_back(mesh.materials[i].color.y);
+        triangleData.push_back(mesh.materials[i].color.z);
+
+        triangleData.push_back(float(mesh.materials[i].type));
+    }
+
+    glGenBuffers(1, &verticesSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, verticesSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, verticesData.size() * sizeof(float), 
+                 verticesData.data(), GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, verticesSSBO);
+
+    glGenBuffers(1, &triangleDataSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, triangleDataSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, triangleData.size() * sizeof(float), 
+                 triangleData.data(), GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, triangleDataSSBO);
+
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-    trianglesChanged = false;
+    meshChanged = false;
 }
 
-void RayTracer::updateTrianglesSSBO()
-{
-    if (trianglesChanged) {
-        trianglesData.clear();
-        for (const auto& t : triangles) {
-            // v0
-            trianglesData.push_back(t.v0.x);
-            trianglesData.push_back(t.v0.y);
-            trianglesData.push_back(t.v0.z);
-            // v1
-            trianglesData.push_back(t.v1.x);
-            trianglesData.push_back(t.v1.y);
-            trianglesData.push_back(t.v1.z);
-            // v2
-            trianglesData.push_back(t.v2.x);
-            trianglesData.push_back(t.v2.y);
-            trianglesData.push_back(t.v2.z);
-            // normal
-            trianglesData.push_back(t.normal.x);
-            trianglesData.push_back(t.normal.y);
-            trianglesData.push_back(t.normal.z);
-            // color
-            trianglesData.push_back(t.material.color.x);
-            trianglesData.push_back(t.material.color.y);
-            trianglesData.push_back(t.material.color.z);
-            // material type
-            trianglesData.push_back(float(t.material.type));
+void RayTracer::updateIndexedSSBOs() {
+    if (meshChanged) {
+        verticesData.clear();
+        for (const auto& vertex : mesh.vertices) {
+            verticesData.push_back(vertex.x);
+            verticesData.push_back(vertex.y);
+            verticesData.push_back(vertex.z);
         }
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, trianglesSSBO);
-        glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, trianglesData.size() * sizeof(float), trianglesData.data());
+
+        triangleData.clear();
+        for (size_t i = 0; i < mesh.normals.size(); ++i) {
+            triangleData.push_back(float(mesh.indices[i * 3]));
+            triangleData.push_back(float(mesh.indices[i * 3 + 1]));
+            triangleData.push_back(float(mesh.indices[i * 3 + 2]));
+            triangleData.push_back(mesh.normals[i].x);
+            triangleData.push_back(mesh.normals[i].y);
+            triangleData.push_back(mesh.normals[i].z);
+            triangleData.push_back(mesh.materials[i].color.x);
+            triangleData.push_back(mesh.materials[i].color.y);
+            triangleData.push_back(mesh.materials[i].color.z);
+            triangleData.push_back(float(mesh.materials[i].type));
+        }
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, verticesSSBO);
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, verticesData.size() * sizeof(float), verticesData.data());
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, triangleDataSSBO);
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, triangleData.size() * sizeof(float), triangleData.data());
+
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-        trianglesChanged = false;
+        meshChanged = false;
     }
 }
 
-bool RayTracer::loadOBJ(const std::string& filename, const Material& material) {
+uint32_t RayTracer::addVertex(const glm::vec3& vertex) {
+    const float epsilon = 1e-4f; // small threshold to consider vertices identical
+    for (size_t i = 0; i < mesh.vertices.size(); ++i) {
+        if (glm::length(mesh.vertices[i] - vertex) < epsilon) {
+            return static_cast<uint32_t>(i);
+        }
+    }
+    
+    mesh.vertices.push_back(vertex);
+    return static_cast<uint32_t>(mesh.vertices.size() - 1);
+}
+
+void RayTracer::addTriangle(uint32_t i0, uint32_t i1, uint32_t i2, 
+                           const glm::vec3& normal, const Material& material) {
+    mesh.indices.push_back(i0);
+    mesh.indices.push_back(i1);
+    mesh.indices.push_back(i2);
+    mesh.normals.push_back(normal);
+    mesh.materials.push_back(material);
+    meshChanged = true;
+}
+
+void RayTracer::createCornellBox() {
+    std::vector<glm::vec3> roomVertices = {
+        {-3.0f, 0.0f, -3.0f}, // 0: bottom-back-left
+        { 3.0f, 0.0f, -3.0f}, // 1: bottom-back-right
+        { 3.0f, 0.0f,  3.0f}, // 2: bottom-front-right
+        {-3.0f, 0.0f,  3.0f}, // 3: bottom-front-left
+        {-3.0f, 6.0f, -3.0f}, // 4: top-back-left
+        { 3.0f, 6.0f, -3.0f}, // 5: top-back-right
+        { 3.0f, 6.0f,  3.0f}, // 6: top-front-right
+        {-3.0f, 6.0f,  3.0f}  // 7: top-front-left
+    };
+    
+    std::vector<uint32_t> indices;
+    for (const auto& vertex : roomVertices) {
+        indices.push_back(addVertex(vertex));
+    }
+    
+    Material floorMat = {{0.8f, 0.8f, 0.8f}, 0};
+    addTriangle(indices[0], indices[2], indices[1], {0,1,0}, floorMat);
+    addTriangle(indices[0], indices[3], indices[2], {0,1,0}, floorMat);
+    
+    Material ceilingMat = {{0.8f, 0.8f, 0.8f}, 0};
+    addTriangle(indices[4], indices[5], indices[6], {0,-1,0}, ceilingMat);
+    addTriangle(indices[4], indices[6], indices[7], {0,-1,0}, ceilingMat);
+    
+    Material leftMat = {{0.8f, 0.2f, 0.2f}, 0};
+    addTriangle(indices[0], indices[4], indices[7], {1,0,0}, leftMat);
+    addTriangle(indices[0], indices[7], indices[3], {1,0,0}, leftMat);
+    
+    Material rightMat = {{0.2f, 0.8f, 0.2f}, 0};
+    addTriangle(indices[1], indices[2], indices[6], {-1,0,0}, rightMat);
+    addTriangle(indices[1], indices[6], indices[5], {-1,0,0}, rightMat);
+    
+    Material backMat = {{0.2f, 0.2f, 0.8f}, 0};
+    addTriangle(indices[0], indices[1], indices[5], {0,0,1}, backMat);
+    addTriangle(indices[0], indices[5], indices[4], {0,0,1}, backMat);
+    
+    //Material frontMat = {{0.8f, 0.8f, 0.2f}, 0};
+    //addTriangle(indices[3], indices[7], indices[6], {0,0,-1}, frontMat);
+    //addTriangle(indices[3], indices[6], indices[2], {0,0,-1}, frontMat);
+    
+    std::vector<glm::vec3> lightVertices = {
+        {-1.0f, 5.99f, -1.0f},
+        { 1.0f, 5.99f, -1.0f},
+        { 1.0f, 5.99f,  1.0f},
+        {-1.0f, 5.99f,  1.0f}
+    };
+    
+    std::vector<uint32_t> lightIndices;
+    for (const auto& vertex : lightVertices) {
+        lightIndices.push_back(addVertex(vertex));
+    }
+    
+    Material lightMat = {{10.0f, 10.0f, 10.0f}, 1};
+    addTriangle(lightIndices[0], lightIndices[2], lightIndices[1], {0,-1,0}, lightMat);
+    addTriangle(lightIndices[0], lightIndices[3], lightIndices[2], {0,-1,0}, lightMat);
+    
+}
+
+bool RayTracer::loadOBJIndexed(const std::string& filename, const Material& material) {
     tinyobj::attrib_t attrib{};
     std::vector<tinyobj::shape_t> shapes{};
     std::vector<tinyobj::material_t> materials{};
@@ -353,73 +329,30 @@ bool RayTracer::loadOBJ(const std::string& filename, const Material& material) {
                 continue;
             }
 
-            // Get indices for the three vertices
-            tinyobj::index_t idx0 = shape.mesh.indices[index_offset + 0];
-            tinyobj::index_t idx1 = shape.mesh.indices[index_offset + 1];
-            tinyobj::index_t idx2 = shape.mesh.indices[index_offset + 2];
-
-            // Get vertex positions
-            glm::vec3 v0(attrib.vertices[3 * idx0.vertex_index + 0],
-                        attrib.vertices[3 * idx0.vertex_index + 1],
-                        attrib.vertices[3 * idx0.vertex_index + 2]);
-            glm::vec3 v1(attrib.vertices[3 * idx1.vertex_index + 0],
-                        attrib.vertices[3 * idx1.vertex_index + 1],
-                        attrib.vertices[3 * idx1.vertex_index + 2]);
-            glm::vec3 v2(attrib.vertices[3 * idx2.vertex_index + 0],
-                        attrib.vertices[3 * idx2.vertex_index + 1],
-                        attrib.vertices[3 * idx2.vertex_index + 2]);
-
-            // // Scale the model
-            // float scale = 1.0f;
-            // if (filename == "bunny.obj") {
-            //     scale = 5.0f;
-            // } else if (filename == "cube.OBJ") {
-            //     scale = 2.0f;
-            // }
-            // v0 *= scale;
-            // v1 *= scale;
-            // v2 *= scale;
-
-
-            // Get or compute normal
-            glm::vec3 normal(0.0f);
-            if (idx0.normal_index >= 0 && idx1.normal_index >= 0 && idx2.normal_index >= 0) {
-                // Use provided normals
-                glm::vec3 n0(attrib.normals[3 * idx0.normal_index + 0],
-                            attrib.normals[3 * idx0.normal_index + 1],
-                            attrib.normals[3 * idx0.normal_index + 2]);
-                glm::vec3 n1(attrib.normals[3 * idx1.normal_index + 0],
-                            attrib.normals[3 * idx1.normal_index + 1],
-                            attrib.normals[3 * idx1.normal_index + 2]);
-                glm::vec3 n2(attrib.normals[3 * idx2.normal_index + 0],
-                            attrib.normals[3 * idx2.normal_index + 1],
-                            attrib.normals[3 * idx2.normal_index + 2]);
-                // Average the normals
-                normal = glm::normalize((n0 + n1 + n2) / 3.0f);
-            } else {
-                // Compute normal from vertices
-                glm::vec3 edge1 = v1 - v0;
-                glm::vec3 edge2 = v2 - v0;
-                normal = glm::normalize(glm::cross(edge1, edge2));
+            std::vector<uint32_t> triIndices;
+            for (int v = 0; v < 3; v++) {
+                tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
+                glm::vec3 vertex(
+                    attrib.vertices[3 * idx.vertex_index + 0],
+                    attrib.vertices[3 * idx.vertex_index + 1],
+                    attrib.vertices[3 * idx.vertex_index + 2]
+                );
+                triIndices.push_back(addVertex(vertex));
             }
 
-            // Create triangle
-            Triangle tri;
-            tri.v0 = v0;
-            tri.v1 = v1;
-            tri.v2 = v2;
-            tri.normal = normal;
-            tri.material = material;
-
-            // Add to triangles vector
-            triangles.push_back(tri);
-
+            const glm::vec3& v0 = mesh.vertices[triIndices[0]];
+            const glm::vec3& v1 = mesh.vertices[triIndices[1]];
+            const glm::vec3& v2 = mesh.vertices[triIndices[2]];
+            glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+            addTriangle(triIndices[0], triIndices[1], triIndices[2], normal, material);
             index_offset += fv;
         }
     }
 
-    trianglesChanged = true;
-    std::cout << "Loaded " << triangles.size() << " triangles from " << filename << std::endl;
-    
+    std::cout << "Loaded " << mesh.getTriangleCount() << " triangles from " << filename << std::endl;
     return true;
+}
+
+bool RayTracer::loadOBJ(const std::string& filename, const Material& material) {
+    return loadOBJIndexed(filename, material);
 }

@@ -23,6 +23,24 @@ struct Triangle {
     Material material;
 };
 
+struct IndexedMesh {
+    std::vector<glm::vec3> vertices;
+    std::vector<uint32_t> indices;
+    std::vector<glm::vec3> normals;
+    std::vector<Material> materials;
+    
+    void clear() {
+        vertices.clear();
+        indices.clear();
+        normals.clear();
+        materials.clear();
+    }
+    
+    size_t getTriangleCount() const {
+        return indices.size() / 3;
+    }
+};
+
 class RayTracer {
 public:
     RayTracer(GLuint width, GLuint height);
@@ -43,13 +61,6 @@ public:
 
     // Get current spheres
     const std::vector<Sphere>& getSpheres() const { return spheres; }
-
-    void setTriangles(const std::vector<Triangle>& newTriangles) {
-        triangles = newTriangles;
-        trianglesChanged = true;
-    }
-
-    const std::vector<Triangle>& getTriangles() const { return triangles; }
 
     bool loadOBJ(const std::string& filename, const Material& material = {{0.8f, 0.8f, 0.8f}, 0});
 
@@ -72,17 +83,27 @@ private:
     GLuint ssbo;
     bool spheresChanged;
 
-    std::vector<Triangle> triangles;
-    std::vector<float> trianglesData;
-    GLuint trianglesSSBO;
-    bool trianglesChanged;
+    // Indexed mesh data
+    IndexedMesh mesh;
+    std::vector<float> verticesData;
+    std::vector<float> triangleData; // indices + normals + materials
+    GLuint verticesSSBO;
+    GLuint triangleDataSSBO;
+    bool meshChanged;
+
 
     void setupTexture();
     void setupShader();
     void setupSSBO();
-    void updateSSBO();
-    void setupTrianglesSSBO();
-    void updateTrianglesSSBO();
+    void updateSSBO();    
+    
+    void setupIndexedSSBOs();
+    void updateIndexedSSBOs();
+    uint32_t addVertex(const glm::vec3& vertex);
+    void addTriangle(uint32_t i0, uint32_t i1, uint32_t i2, 
+                    const glm::vec3& normal, const Material& material);
+    void createCornellBox();
+    bool loadOBJIndexed(const std::string& filename, const Material& material);
 };
 
 #endif // RAY_TRACER_H
