@@ -224,7 +224,7 @@ void RayTracer::setupTexture()
 
 void RayTracer::setupShader()
 {
-    computeShader = new Shader("shaders/mendalbulb.comp");
+    computeShader = new Shader("shaders/raytracer.comp");
 }
 
 void RayTracer::setupSSBO()
