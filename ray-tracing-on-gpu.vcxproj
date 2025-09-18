@@ -148,11 +148,24 @@
     </ClCompile>
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\RayTracer.cpp" />
+    <ClCompile Include="src\RayTracerApp.cpp" />
     <ClCompile Include="src\Shader.cpp" />
+    <ClCompile Include="Libraries\include\imgui\imgui.cpp" />
+    <ClCompile Include="Libraries\include\imgui\imgui_demo.cpp" />
+    <ClCompile Include="Libraries\include\imgui\imgui_draw.cpp" />
+    <ClCompile Include="Libraries\include\imgui\imgui_tables.cpp" />
+    <ClCompile Include="Libraries\include\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="Libraries\include\imgui\backends\imgui_impl_glfw.cpp" />
+    <ClCompile Include="Libraries\include\imgui\backends\imgui_impl_opengl3.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\RayTracer.h" />
+    <ClInclude Include="src\RayTracerApp.h" />
     <ClInclude Include="src\Shader.h" />
+    <ClInclude Include="Libraries\include\imgui\imgui.h" />
+    <ClInclude Include="Libraries\include\imgui\imgui_internal.h" />
+    <ClInclude Include="Libraries\include\imgui\backends\imgui_impl_glfw.h" />
+    <ClInclude Include="Libraries\include\imgui\backends\imgui_impl_opengl3.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="shaders\heatmap.comp" />
