@@ -23,21 +23,44 @@ struct Triangle {
     Material material;
 };
 
-struct IndexedMesh {
-    std::vector<glm::vec3> vertices;
-    std::vector<uint32_t> indices;
-    std::vector<glm::vec3> normals;
-    std::vector<Material> materials;
+struct AABB {
+    glm::vec3 min;
+    glm::vec3 max;
     
-    void clear() {
-        vertices.clear();
-        indices.clear();
-        normals.clear();
-        materials.clear();
+    AABB() : min(1e30f), max(-1e30f) {}
+    AABB(const glm::vec3& min, const glm::vec3& max) : min(min), max(max) {}
+    
+    void expand(const glm::vec3& point) {
+        min = glm::min(min, point);
+        max = glm::max(max, point);
     }
     
-    size_t getTriangleCount() const {
-        return indices.size() / 3;
+    void expand(const AABB& box) {
+        min = glm::min(min, box.min);
+        max = glm::max(max, box.max);
+    }
+    
+    glm::vec3 center() const {
+        return (min + max) * 0.5f;
+    }
+    
+    float surfaceArea() const {
+        glm::vec3 extent = max - min;
+        return 2.0f * (extent.x * extent.y + extent.y * extent.z + extent.z * extent.x);
+    }
+};
+
+struct BVHNode {
+    AABB bounds;
+    int leftChild;   // Index to left child node -1 if leaf
+    int rightChild;  // Index to right child node -1 if leaf
+    int firstTriIndex; // Index of first triangle in leaf nodes
+    int triCount;    // Number of triangles in leaf nodes
+
+    BVHNode() : leftChild(-1), rightChild(-1), firstTriIndex(0), triCount(0) {}
+    
+    bool isLeaf() const {
+        return leftChild == -1 && rightChild == -1;
     }
 };
 
@@ -62,6 +85,10 @@ public:
     // Get current spheres
     const std::vector<Sphere>& getSpheres() const { return spheres; }
 
+    void setTriangles(const std::vector<Triangle>& newTriangles);
+
+    const std::vector<Triangle>& getTriangles() const { return triangles; }
+
     bool loadOBJ(const std::string& filename, const Material& material = {{0.8f, 0.8f, 0.8f}, 0});
 
 private:
@@ -83,27 +110,34 @@ private:
     GLuint ssbo;
     bool spheresChanged;
 
-    // Indexed mesh data
-    IndexedMesh mesh;
-    std::vector<float> verticesData;
-    std::vector<float> triangleData; // indices + normals + materials
-    GLuint verticesSSBO;
-    GLuint triangleDataSSBO;
-    bool meshChanged;
+    std::vector<Triangle> triangles;
+    std::vector<float> trianglesData;
+    GLuint trianglesSSBO;
+    bool trianglesChanged;
 
+    std::vector<BVHNode> bvhNodes;
+    std::vector<int> triangleIndices;
+    std::vector<float> bvhData;
+    std::vector<float> bvhIndicesData;
+    GLuint bvhSSBO;
+    GLuint bvhIndicesSSBO;
+    bool bvhChanged;
 
     void setupTexture();
     void setupShader();
     void setupSSBO();
-    void updateSSBO();    
+    void updateSSBO();
+    void setupTrianglesSSBO();
+    void updateTrianglesSSBO();
     
-    void setupIndexedSSBOs();
-    void updateIndexedSSBOs();
-    uint32_t addVertex(const glm::vec3& vertex);
-    void addTriangle(uint32_t i0, uint32_t i1, uint32_t i2, 
-                    const glm::vec3& normal, const Material& material);
-    void createCornellBox();
-    bool loadOBJIndexed(const std::string& filename, const Material& material);
+    AABB computeTriangleAABB(const Triangle& tri);
+    glm::vec3 computeTriangleCentroid(const Triangle& tri);
+    void buildBVH();
+    int buildBVHRecursive(int start, int end, std::vector<int>& indices, const std::vector<glm::vec3>& centroids);
+    void setupBVHSSBO();
+    void updateBVHSSBO();
+    void setupBVHIndicesSSBO();
+    void updateBVHIndicesSSBO();
 };
 
 #endif // RAY_TRACER_H

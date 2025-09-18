@@ -12,6 +12,7 @@ uniform int frameCount;
 uniform vec2 resolution;
 uniform int numSpheres;
 uniform int numTriangles;
+uniform int numBVHNodes;
 
 struct Ray {
     vec3 origin;
@@ -35,19 +36,36 @@ struct Triangle {
     Material material;
 };
 
+struct AABB {
+    vec3 minPoint;
+    vec3 maxPoint;
+};
+
+struct BVHNode {
+    AABB bounds;
+    int leftChild;   // -1 if leaf
+    int rightChild;  // -1 if leaf
+    int firstTriIndex;
+    int triCount;
+};
+
 layout(std430, binding = 1) buffer Spheres {
     float spheresData[];
 };
 
-layout(std430, binding = 2) buffer Vertices {
-    float verticesData[];
+layout(std430, binding = 2) buffer Triangles {
+    float trianglesData[];
 };
 
-layout(std430, binding = 3) buffer TriangleData {
-    float triangleData[];
+layout(std430, binding = 3) buffer BVHNodes {
+    float bvhData[];
 };
 
-#define MAX_BOUNCES 10
+layout(std430, binding = 4) buffer BVHIndices {
+    float bvhIndicesData[];
+};
+
+#define MAX_BOUNCES 1000
 
 uint wang_hash(uint seed) {
     seed = (seed ^ 61u) ^ (seed >> 16u);
@@ -152,8 +170,8 @@ bool intersectTriangle(Ray ray, Triangle triangle, float t_min, float t_max, out
         return false;
 
     // Backface culling: if det < 0, the triangle is backfacing
-    if (det < 0.0)
-        return false;
+    //if (det < 0.0)
+        //return false;
 
     float inv_det = 1.0 / det;
     vec3 tvec = ray.origin - triangle.v0;
@@ -175,6 +193,101 @@ bool intersectTriangle(Ray ray, Triangle triangle, float t_min, float t_max, out
 
     normal = triangle.normal;
     return true;
+}
+
+bool intersectAABB(Ray ray, AABB aabb, float t_min, float t_max) {
+    for (int i = 0; i < 3; i++) {
+        float invD = 1.0 / ray.dir[i];
+        float t0 = (aabb.minPoint[i] - ray.origin[i]) * invD;
+        float t1 = (aabb.maxPoint[i] - ray.origin[i]) * invD;
+        
+        if (invD < 0.0) {
+            float temp = t0;
+            t0 = t1;
+            t1 = temp;
+        }
+        
+        t_min = max(t0, t_min);
+        t_max = min(t1, t_max);
+        
+        if (t_max < t_min) return false;
+    }
+    return true;
+}
+
+Triangle getTriangle(int index) {
+    int base = index * 16;
+    vec3 v0 = vec3(trianglesData[base], trianglesData[base+1], trianglesData[base+2]);
+    vec3 v1 = vec3(trianglesData[base+3], trianglesData[base+4], trianglesData[base+5]);
+    vec3 v2 = vec3(trianglesData[base+6], trianglesData[base+7], trianglesData[base+8]);
+    vec3 triNormal = vec3(trianglesData[base+9], trianglesData[base+10], trianglesData[base+11]);
+    vec3 color = vec3(trianglesData[base+12], trianglesData[base+13], trianglesData[base+14]);
+    int materialType = int(trianglesData[base+15]);
+    return Triangle(v0, v1, v2, triNormal, Material(color, materialType));
+}
+
+BVHNode getBVHNode(int index) {
+    int base = index * 12; // 12 floats per node (min(3) + pad(1) + max(3) + pad(1) + data(4))
+    vec3 minPoint = vec3(bvhData[base], bvhData[base+1], bvhData[base+2]);
+    vec3 maxPoint = vec3(bvhData[base+4], bvhData[base+5], bvhData[base+6]);
+    int leftChild = int(bvhData[base+8]);
+    int rightChild = int(bvhData[base+9]);
+    int firstTriIndex = int(bvhData[base+10]);
+    int triCount = int(bvhData[base+11]);
+    
+    BVHNode node;
+    node.bounds.minPoint = minPoint;
+    node.bounds.maxPoint = maxPoint;
+    node.leftChild = leftChild;
+    node.rightChild = rightChild;
+    node.firstTriIndex = firstTriIndex;
+    node.triCount = triCount;
+    return node;
+}
+
+bool intersectBVH(Ray ray, float t_min, float t_max, out float closestT, out Triangle hitTriangle) {
+    if (numBVHNodes == 0) return false;
+    
+    closestT = t_max;
+    bool hitSomething = false;
+    
+    int stack[64];
+    int stackPtr = 0;
+    stack[stackPtr++] = 0;
+    
+    while (stackPtr > 0) {
+        int nodeIndex = stack[--stackPtr];
+        BVHNode node = getBVHNode(nodeIndex);
+        
+        if (!intersectAABB(ray, node.bounds, t_min, closestT)) {
+            continue;
+        }
+        
+        if (node.leftChild == -1 && node.rightChild == -1) {
+            for (int i = 0; i < node.triCount; i++) {
+                int triIndex = int(bvhIndicesData[node.firstTriIndex + i]);
+                Triangle triangle = getTriangle(triIndex);
+                
+                float t;
+                vec3 n;
+                if (intersectTriangle(ray, triangle, t_min, closestT, t, n) && t < closestT) {
+                    closestT = t;
+                    hitTriangle = triangle;
+                    hitSomething = true;
+                }
+            }
+        } else {
+            // Add children to stack (right first for left-to-right traversal)
+            if (node.rightChild != -1) {
+                stack[stackPtr++] = node.rightChild;
+            }
+            if (node.leftChild != -1) {
+                stack[stackPtr++] = node.leftChild;
+            }
+        }
+    }
+    
+    return hitSomething;
 }
 
 vec3 trace(Ray ray, inout uint seed) {
@@ -207,42 +320,14 @@ vec3 trace(Ray ray, inout uint seed) {
             }
         }
 
-        // Check triangles
-        for(int i = 0; i < numTriangles; ++i) {
-            int base = i * 10; // 10 floats per triangle: i0,i1,i2,nx,ny,nz,cx,cy,cz,mt
-            
-            uint i0 = uint(triangleData[base]);
-            uint i1 = uint(triangleData[base + 1]);
-            uint i2 = uint(triangleData[base + 2]);
-            
-            int vBase0 = int(i0) * 3;
-            int vBase1 = int(i1) * 3;
-            int vBase2 = int(i2) * 3;
-            
-            vec3 v0 = vec3(verticesData[vBase0], verticesData[vBase0+1], verticesData[vBase0+2]);
-            vec3 v1 = vec3(verticesData[vBase1], verticesData[vBase1+1], verticesData[vBase1+2]);
-            vec3 v2 = vec3(verticesData[vBase2], verticesData[vBase2+1], verticesData[vBase2+2]);
-            
-            vec3 triNormal = vec3(triangleData[base+3], triangleData[base+4], triangleData[base+5]);
-            vec3 color = vec3(triangleData[base+6], triangleData[base+7], triangleData[base+8]);
-            int materialType = int(triangleData[base+9]);
-            
-            Triangle triangle;
-            triangle.v0 = v0;
-            triangle.v1 = v1;
-            triangle.v2 = v2;
-            triangle.normal = triNormal;
-            triangle.material.color = color;
-            triangle.material.type = materialType;
-            float t;
-            vec3 n;
-            if (intersectTriangle(ray, triangle, 0.001, closestT, t, n) && t < closestT) {
-                closestT = t;
-                normal = n;
-                hitTriangle = triangle;
-                hitSomething = true;
-                hitSphereObj = false;
-            }
+        float triangleT;
+        Triangle bvhHitTriangle;
+        if (intersectBVH(ray, 0.001, closestT, triangleT, bvhHitTriangle) && triangleT < closestT) {
+            closestT = triangleT;
+            normal = bvhHitTriangle.normal;
+            hitTriangle = bvhHitTriangle;
+            hitSomething = true;
+            hitSphereObj = false;
         }
 
         if(!hitSomething) {
@@ -270,7 +355,6 @@ vec3 trace(Ray ray, inout uint seed) {
 
         if (materialType == 1) {
             accumColor += throughput * objectColor;
-            // return accumColor;
             break;
         } else {
             vec3 newDir = randomHemisphere(normal, seed);
@@ -278,11 +362,6 @@ vec3 trace(Ray ray, inout uint seed) {
             throughput *= objectColor;
         }
     }
-
-    // If ray bounced max times without hitting light or escaping, assume it hits light
-    // only for testing
-    // make the vec3 1 if max bounce is low
-    accumColor += throughput * vec3(0);
 
     return accumColor;
 }
