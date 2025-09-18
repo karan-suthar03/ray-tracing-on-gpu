@@ -1,11 +1,14 @@
 #include "RayTracer.h"
 #include <vector>
 #include <iostream>
+#include <algorithm>
+#include <numeric>
+#include <chrono>
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
 
 RayTracer::RayTracer(GLuint width, GLuint height)
-    : width(width), height(height), frameCount(0), prevCamPos(0.0f), prevCamTarget(0.0f), prevCamUp(0.0f), spheresChanged(true), trianglesChanged(true)
+    : width(width), height(height), frameCount(0), prevCamPos(0.0f), prevCamTarget(0.0f), prevCamUp(0.0f), spheresChanged(true), trianglesChanged(true), bvhChanged(true)
 {
     spheres = {
         //{{0.0f, 0.0f, 0.0f}, 0.5f, {1.0f, 0.0f, 0.0f}, 0}, // Lambertian
@@ -15,31 +18,31 @@ RayTracer::RayTracer(GLuint width, GLuint height)
 
     Triangle leftWall1, leftWall2, rightWall1, rightWall2, backWall1, backWall2, floor1, floor2, ceiling1, ceiling2, frontWall1, frontWall2;
     
-    // Left wall (x = -3, normal pointing right) - 2 triangles
-    leftWall1.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
-    leftWall1.v1 = glm::vec3(-3.0f, 3.0f, -3.0f);
-    leftWall1.v2 = glm::vec3(-3.0f, 3.0f, 3.0f);
-    leftWall1.normal = glm::vec3(1.0f, 0.0f, 0.0f);
-    leftWall1.material = {{0.8f, 0.2f, 0.2f}, 0}; // Red, Lambertian
-    
-    leftWall2.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
-    leftWall2.v1 = glm::vec3(-3.0f, 3.0f, 3.0f);
-    leftWall2.v2 = glm::vec3(-3.0f, -3.0f, 3.0f);
-    leftWall2.normal = glm::vec3(1.0f, 0.0f, 0.0f);
-    leftWall2.material = {{0.8f, 0.2f, 0.2f}, 0}; // Red, Lambertian
-    
-    // Right wall (x = 3, normal pointing left) - 2 triangles
-    rightWall1.v0 = glm::vec3(3.0f, -3.0f, -3.0f);
-    rightWall1.v1 = glm::vec3(3.0f, 3.0f, 3.0f);
-    rightWall1.v2 = glm::vec3(3.0f, 3.0f, -3.0f);
-    rightWall1.normal = glm::vec3(-1.0f, 0.0f, 0.0f);
-    rightWall1.material = {{0.2f, 0.8f, 0.2f}, 0}; // Green, Lambertian
-    
-    rightWall2.v0 = glm::vec3(3.0f, -3.0f, -3.0f);
-    rightWall2.v1 = glm::vec3(3.0f, -3.0f, 3.0f);
-    rightWall2.v2 = glm::vec3(3.0f, 3.0f, 3.0f);
-    rightWall2.normal = glm::vec3(-1.0f, 0.0f, 0.0f);
-    rightWall2.material = {{0.2f, 0.8f, 0.2f}, 0}; // Green, Lambertian
+    //// Left wall (x = -3, normal pointing right) - 2 triangles
+    //leftWall1.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
+    //leftWall1.v1 = glm::vec3(-3.0f, 3.0f, -3.0f);
+    //leftWall1.v2 = glm::vec3(-3.0f, 3.0f, 3.0f);
+    //leftWall1.normal = glm::vec3(1.0f, 0.0f, 0.0f);
+    //leftWall1.material = {{0.8f, 0.2f, 0.2f}, 0}; // Red, Lambertian
+    //
+    //leftWall2.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
+    //leftWall2.v1 = glm::vec3(-3.0f, 3.0f, 3.0f);
+    //leftWall2.v2 = glm::vec3(-3.0f, -3.0f, 3.0f);
+    //leftWall2.normal = glm::vec3(1.0f, 0.0f, 0.0f);
+    //leftWall2.material = {{0.8f, 0.2f, 0.2f}, 0}; // Red, Lambertian
+    //
+    //// Right wall (x = 3, normal pointing left) - 2 triangles
+    //rightWall1.v0 = glm::vec3(3.0f, -3.0f, -3.0f);
+    //rightWall1.v1 = glm::vec3(3.0f, 3.0f, 3.0f);
+    //rightWall1.v2 = glm::vec3(3.0f, 3.0f, -3.0f);
+    //rightWall1.normal = glm::vec3(-1.0f, 0.0f, 0.0f);
+    //rightWall1.material = {{0.2f, 0.8f, 0.2f}, 0}; // Green, Lambertian
+    //
+    //rightWall2.v0 = glm::vec3(3.0f, -3.0f, -3.0f);
+    //rightWall2.v1 = glm::vec3(3.0f, -3.0f, 3.0f);
+    //rightWall2.v2 = glm::vec3(3.0f, 3.0f, 3.0f);
+    //rightWall2.normal = glm::vec3(-1.0f, 0.0f, 0.0f);
+    //rightWall2.material = {{0.2f, 0.8f, 0.2f}, 0}; // Green, Lambertian
     
     // Back wall (z = -3, normal pointing forward) - 2 triangles
     backWall1.v0 = glm::vec3(-3.0f, -3.0f, -3.0f);
@@ -80,40 +83,40 @@ RayTracer::RayTracer(GLuint width, GLuint height)
     ceiling2.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
     ceiling2.material = {{0.8f, 0.8f, 0.8f}, 0}; // Gray, Lambertian
 
-    Triangle light1, light2;
-    light1.v0 = glm::vec3(-1.0f, 2.99f, -1.0f);
-    light1.v1 = glm::vec3(1.0f, 2.99f, -1.0f);
-    light1.v2 = glm::vec3(1.0f, 2.99f, 1.0f);
-    light1.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
-    light1.material = {{10.0f, 10.0f, 10.0f}, 1}; // Bright white, Light
+    //Triangle light1, light2;
+    //light1.v0 = glm::vec3(-1.0f, 2.99f, -1.0f);
+    //light1.v1 = glm::vec3(1.0f, 2.99f, -1.0f);
+    //light1.v2 = glm::vec3(1.0f, 2.99f, 1.0f);
+    //light1.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
+    //light1.material = {{10.0f, 10.0f, 10.0f}, 1}; // Bright white, Light
 
-    light2.v0 = glm::vec3(-1.0f, 2.99f, -1.0f);
-    light2.v1 = glm::vec3(1.0f, 2.99f, 1.0f);
-    light2.v2 = glm::vec3(-1.0f, 2.99f, 1.0f);
-    light2.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
-    light2.material = {{10.0f, 10.0f, 10.0f}, 1}; // Bright white, Light
+    //light2.v0 = glm::vec3(-1.0f, 2.99f, -1.0f);
+    //light2.v1 = glm::vec3(1.0f, 2.99f, 1.0f);
+    //light2.v2 = glm::vec3(-1.0f, 2.99f, 1.0f);
+    //light2.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Pointing down
+    //light2.material = {{10.0f, 10.0f, 10.0f}, 1}; // Bright white, Light
 
-    // Front wall (z = 3, normal pointing backward) - 2 triangles
-    frontWall1.v0 = glm::vec3(-3.0f, -3.0f, 3.0f);
-    frontWall1.v1 = glm::vec3(-3.0f, 3.0f, 3.0f);
-    frontWall1.v2 = glm::vec3(3.0f, 3.0f, 3.0f);
-    frontWall1.normal = glm::vec3(0.0f, 0.0f, -1.0f);
-    frontWall1.material = {{0.8f, 0.8f, 0.2f}, 0}; // Yellow, Lambertian
+    //// Front wall (z = 3, normal pointing backward) - 2 triangles
+    //frontWall1.v0 = glm::vec3(-3.0f, -3.0f, 3.0f);
+    //frontWall1.v1 = glm::vec3(-3.0f, 3.0f, 3.0f);
+    //frontWall1.v2 = glm::vec3(3.0f, 3.0f, 3.0f);
+    //frontWall1.normal = glm::vec3(0.0f, 0.0f, -1.0f);
+    //frontWall1.material = {{0.8f, 0.8f, 0.2f}, 0}; // Yellow, Lambertian
 
-    frontWall2.v0 = glm::vec3(-3.0f, -3.0f, 3.0f);
-    frontWall2.v1 = glm::vec3(3.0f, 3.0f, 3.0f);
-    frontWall2.v2 = glm::vec3(3.0f, -3.0f, 3.0f);
-    frontWall2.normal = glm::vec3(0.0f, 0.0f, -1.0f);
-    frontWall2.material = {{0.8f, 0.8f, 0.2f}, 0}; // Yellow, Lambertian
+    //frontWall2.v0 = glm::vec3(-3.0f, -3.0f, 3.0f);
+    //frontWall2.v1 = glm::vec3(3.0f, 3.0f, 3.0f);
+    //frontWall2.v2 = glm::vec3(3.0f, -3.0f, 3.0f);
+    //frontWall2.normal = glm::vec3(0.0f, 0.0f, -1.0f);
+    //frontWall2.material = {{0.8f, 0.8f, 0.2f}, 0}; // Yellow, Lambertian
 
     triangles = {
-        leftWall1, leftWall2,
-        rightWall1, rightWall2,
+        //leftWall1, leftWall2,
+        //rightWall1, rightWall2,
         backWall1, backWall2,
         floor1, floor2,
         ceiling1, ceiling2,
-        frontWall1, frontWall2,
-        light1, light2
+        //frontWall1, frontWall2,
+        //light1, light2
     };
 
     for (auto& tri : triangles) {
@@ -128,15 +131,20 @@ RayTracer::RayTracer(GLuint width, GLuint height)
         std::cerr << "Failed to load cube.OBJ" << std::endl;
     }
 
-    //Material bunnyMaterial = { {1.0f,1.0f, 1.0f}, 0 };
-    //if (!loadOBJ("bunny2.obj", bunnyMaterial)) {
-    //    std::cerr << "Failed to load bunny.obj" << std::endl;
-    //}
+    Material bunnyMaterial = { {0.9f,0.0f, 0.0f}, 0 };
+    if (!loadOBJ("bunny.obj", bunnyMaterial)) {
+        std::cerr << "Failed to load bunny.obj" << std::endl;
+    }
 
     setupTexture();
     setupShader();
     setupSSBO();
     setupTrianglesSSBO();
+    
+    // bvh only after all triangles are loaded
+    buildBVH();
+    setupBVHSSBO();
+    setupBVHIndicesSSBO();
 }
 
 RayTracer::~RayTracer()
@@ -144,6 +152,8 @@ RayTracer::~RayTracer()
     glDeleteTextures(1, &outputTexture);
     glDeleteBuffers(1, &ssbo);
     glDeleteBuffers(1, &trianglesSSBO);
+    glDeleteBuffers(1, &bvhSSBO);
+    glDeleteBuffers(1, &bvhIndicesSSBO);
     delete computeShader;
 }
 
@@ -161,6 +171,8 @@ void RayTracer::render(const glm::vec3& cameraPos,
 
     updateSSBO();
     updateTrianglesSSBO();
+    updateBVHSSBO();
+    updateBVHIndicesSSBO();
 
     computeShader->use();
 
@@ -172,6 +184,7 @@ void RayTracer::render(const glm::vec3& cameraPos,
     computeShader->setVec2("resolution", glm::vec2(width, height));
     computeShader->setInt("numSpheres", static_cast<int>(spheres.size()));
     computeShader->setInt("numTriangles", static_cast<int>(triangles.size()));
+    computeShader->setInt("numBVHNodes", static_cast<int>(bvhNodes.size()));
 
     // we are going to make worker groups with each of them containing 16 * 16 threads as defined in the compute shader
     // we are adding 15 to ensure we round up when the dimensions are not multiples of 16
@@ -185,6 +198,13 @@ void RayTracer::render(const glm::vec3& cameraPos,
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
     frameCount++;
+}
+
+void RayTracer::setTriangles(const std::vector<Triangle>& newTriangles) {
+    triangles = newTriangles;
+    trianglesChanged = true;
+    buildBVH();
+    bvhChanged = true;
 }
 
 void RayTracer::setupTexture()
@@ -204,7 +224,7 @@ void RayTracer::setupTexture()
 
 void RayTracer::setupShader()
 {
-    computeShader = new Shader("shaders/raytracer.comp");
+    computeShader = new Shader("shaders/mendalbulb.comp");
 }
 
 void RayTracer::setupSSBO()
@@ -419,7 +439,185 @@ bool RayTracer::loadOBJ(const std::string& filename, const Material& material) {
     }
 
     trianglesChanged = true;
+    // buildBVH();
+    // bvhChanged = true;
     std::cout << "Loaded " << triangles.size() << " triangles from " << filename << std::endl;
     
     return true;
+}
+
+AABB RayTracer::computeTriangleAABB(const Triangle& tri) {
+    AABB aabb;
+    aabb.expand(tri.v0);
+    aabb.expand(tri.v1);
+    aabb.expand(tri.v2);
+    return aabb;
+}
+
+glm::vec3 RayTracer::computeTriangleCentroid(const Triangle& tri) {
+    return (tri.v0 + tri.v1 + tri.v2) / 3.0f;
+}
+
+void RayTracer::buildBVH() {
+    if (triangles.empty()) {
+        bvhNodes.clear();
+        triangleIndices.clear();
+        bvhChanged = true;
+        return;
+    }
+
+    std::cout << "Building BVH for " << triangles.size() << " triangles..." << std::endl;
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    triangleIndices.resize(triangles.size());
+    std::iota(triangleIndices.begin(), triangleIndices.end(), 0);
+
+    std::vector<glm::vec3> centroids(triangles.size());
+    for (size_t i = 0; i < triangles.size(); i++) {
+        centroids[i] = computeTriangleCentroid(triangles[i]);
+    }
+
+    
+    bvhNodes.clear();
+    bvhNodes.reserve(2 * triangles.size());
+
+    buildBVHRecursive(0, static_cast<int>(triangles.size()), triangleIndices, centroids);
+    
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    
+    bvhChanged = true;
+    std::cout << bvhNodes.size() << " nodes in " << duration.count() << "ms" << std::endl;
+}
+
+int RayTracer::buildBVHRecursive(int start, int end, std::vector<int>& indices, const std::vector<glm::vec3>& centroids) {
+    int nodeIndex = static_cast<int>(bvhNodes.size());
+    bvhNodes.emplace_back();
+    BVHNode& node = bvhNodes[nodeIndex];
+
+    for (int i = start; i < end; i++) {
+        const Triangle& tri = triangles[indices[i]];
+        AABB triAABB = computeTriangleAABB(tri);
+        node.bounds.expand(triAABB);
+    }
+
+    int triCount = end - start;
+    
+    if (triCount <= 8) {
+        node.firstTriIndex = start;
+        node.triCount = triCount;
+        return nodeIndex;
+    }
+
+    // Find the longest axis and split at median
+    // Suggestion: we can make a surface based spilit function which is way more optimized
+    glm::vec3 extent = node.bounds.max - node.bounds.min;
+    int splitAxis = 0;
+    if (extent.y > extent.x) splitAxis = 1;
+    if (extent.z > extent[splitAxis]) splitAxis = 2;
+
+    // Sort triangles by centroid along the split axis
+    std::sort(indices.begin() + start, indices.begin() + end, 
+              [&centroids, splitAxis](int a, int b) {
+                  return centroids[a][splitAxis] < centroids[b][splitAxis];
+              });
+
+    int split = start + triCount / 2;
+
+    node.leftChild = buildBVHRecursive(start, split, indices, centroids);
+    node.rightChild = buildBVHRecursive(split, end, indices, centroids);
+
+    return nodeIndex;
+}
+
+void RayTracer::setupBVHSSBO() {
+    bvhData.clear();
+    
+    for (const auto& node : bvhNodes) {
+        // AABB min
+        bvhData.push_back(node.bounds.min.x);
+        bvhData.push_back(node.bounds.min.y);
+        bvhData.push_back(node.bounds.min.z);
+        bvhData.push_back(0.0f); // padding
+        
+        // AABB max
+        bvhData.push_back(node.bounds.max.x);
+        bvhData.push_back(node.bounds.max.y);
+        bvhData.push_back(node.bounds.max.z);
+        bvhData.push_back(0.0f); // padding
+        
+        // Node data
+        bvhData.push_back(static_cast<float>(node.leftChild));
+        bvhData.push_back(static_cast<float>(node.rightChild));
+        bvhData.push_back(static_cast<float>(node.firstTriIndex));
+        bvhData.push_back(static_cast<float>(node.triCount));
+    }
+
+    glGenBuffers(1, &bvhSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, bvhSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, bvhData.size() * sizeof(float), bvhData.data(), GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, bvhSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    bvhChanged = false;
+}
+
+// i dont think we're ever going to use this function now but maybe in future
+void RayTracer::updateBVHSSBO() {
+    if (bvhChanged) {
+        bvhData.clear();
+        
+        // Serialize BVH nodes
+        for (const auto& node : bvhNodes) {
+            // AABB min
+            bvhData.push_back(node.bounds.min.x);
+            bvhData.push_back(node.bounds.min.y);
+            bvhData.push_back(node.bounds.min.z);
+            bvhData.push_back(0.0f); // padding
+            
+            // AABB max
+            bvhData.push_back(node.bounds.max.x);
+            bvhData.push_back(node.bounds.max.y);
+            bvhData.push_back(node.bounds.max.z);
+            bvhData.push_back(0.0f); // padding
+            
+            // Node data
+            bvhData.push_back(static_cast<float>(node.leftChild));
+            bvhData.push_back(static_cast<float>(node.rightChild));
+            bvhData.push_back(static_cast<float>(node.firstTriIndex));
+            bvhData.push_back(static_cast<float>(node.triCount));
+        }
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, bvhSSBO);
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, bvhData.size() * sizeof(float), bvhData.data());
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+        bvhChanged = false;
+    }
+}
+
+void RayTracer::setupBVHIndicesSSBO() {
+    bvhIndicesData.clear();
+    
+    for (int index : triangleIndices) {
+        bvhIndicesData.push_back(static_cast<float>(index));
+    }
+
+    glGenBuffers(1, &bvhIndicesSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, bvhIndicesSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, bvhIndicesData.size() * sizeof(float), bvhIndicesData.data(), GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, bvhIndicesSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+}
+
+void RayTracer::updateBVHIndicesSSBO() {
+    if (bvhChanged) {
+        bvhIndicesData.clear();
+        
+        for (int index : triangleIndices) {
+            bvhIndicesData.push_back(static_cast<float>(index));
+        }
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, bvhIndicesSSBO);
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, bvhIndicesData.size() * sizeof(float), bvhIndicesData.data());
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    }
 }
