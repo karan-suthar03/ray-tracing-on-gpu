@@ -1,57 +1,84 @@
-#include <iostream>
+#include <memory>
+
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 
 // ImGui includes
 #include <imgui/imgui.h>
 #include <imgui/backends/imgui_impl_glfw.h>
 #include <imgui/backends/imgui_impl_opengl3.h>
 
-const int SCR_WIDTH = 1280;
-const int SCR_HEIGHT = 720;
+#include "RayTracer.h"
 
-int main()
-{
-    // Initialize GLFW
-    if (!glfwInit()) {
-        std::cout << "Failed to initialize GLFW" << std::endl;
-        return -1;
+constexpr int SCREEN_WIDTH = 1280;
+constexpr int SCREEN_HEIGHT = 720;
+constexpr float LEFT_PANEL_WIDTH = 300.0f;
+constexpr float RIGHT_PANEL_WIDTH = 300.0f;
+
+struct CameraState {
+    glm::vec3 position{0.0f, 0.0f, 5.0f};
+    glm::vec3 target{0.0f, 0.0f, 0.0f};
+    glm::vec3 up{0.0f, 1.0f, 0.0f};
+    float speed = 0.1f;
+} g_camera;
+
+GLFWwindow* createWindow();
+void setupImGui(GLFWwindow* window);
+void renderUI(RayTracer* rayTracer);
+void renderSceneControlsPanel();
+void renderScenePropertiesPanel(float viewportWidth);
+void renderViewport(RayTracer* rayTracer, float viewportWidth, float viewportHeight);
+
+int main() {
+    glfwInit();
+    GLFWwindow* window = createWindow();
+    glfwMakeContextCurrent(window);
+    gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+    
+    setupImGui(window);
+    
+    std::unique_ptr<RayTracer> rayTracer = std::make_unique<RayTracer>(SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    while (!glfwWindowShouldClose(window)) {
+        glfwPollEvents();
+        
+        renderUI(rayTracer.get());
+        
+        glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+        glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        glfwSwapBuffers(window);
     }
 
-    // Configure GLFW
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    glfwDestroyWindow(window);
+    glfwTerminate();
+    return 0;
+}
+GLFWwindow* createWindow() {
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // Create window
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "ImGui Test Window", NULL, NULL);
-    if (window == NULL) {
-        std::cout << "Failed to create GLFW window" << std::endl;
-        glfwTerminate();
-        return -1;
-    }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // Enable vsync
+    GLFWwindow* window = glfwCreateWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Ray Tracing", nullptr, nullptr);
+    glfwSwapInterval(1);
+    return window;
+}
 
-    // Initialize GLAD
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        std::cout << "Failed to initialize GLAD" << std::endl;
-        return -1;
-    }
-
-    // Print OpenGL info
-    std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
-
-    // Setup Dear ImGui context
+void setupImGui(GLFWwindow* window) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-    // Setup Dear ImGui style
     ImGui::StyleColorsDark();
     
-    // Customize the style for a more professional look
     ImGuiStyle& style = ImGui::GetStyle();
     style.WindowRounding = 5.0f;
     style.FrameRounding = 3.0f;
@@ -62,154 +89,132 @@ int main()
     style.ItemSpacing = ImVec2(8, 4);
     style.ItemInnerSpacing = ImVec2(4, 4);
 
-    // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 330");
+    ImGui_ImplOpenGL3_Init("#version 430");
+}
 
-    // Main loop
-    while (!glfwWindowShouldClose(window)) {
-        // Poll events
-        glfwPollEvents();
+void renderUI(RayTracer* rayTracer) {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
 
-        // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImVec2 workSize = viewport->WorkSize;
+    
+    const float viewportWidth = workSize.x - LEFT_PANEL_WIDTH - RIGHT_PANEL_WIDTH;
+    
+    renderSceneControlsPanel();
+    renderScenePropertiesPanel(viewportWidth);
+    renderViewport(rayTracer, viewportWidth, workSize.y);
+}
 
-        // Get the main viewport size
-        ImGuiViewport* viewport = ImGui::GetMainViewport();
-        ImVec2 work_size = viewport->WorkSize;
-        
-        // Define panel dimensions
-        const float left_panel_width = 300.0f;
-        const float right_panel_width = 300.0f;
-        const float viewport_width = work_size.x - left_panel_width - right_panel_width;
-        
-        // Left Panel - Tools and Controls
-        ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::SetNextWindowSize(ImVec2(left_panel_width, work_size.y));
-        ImGui::Begin("Tools & Controls", nullptr, 
-                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | 
-                    ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
-        
-        // Tools section
-        if (ImGui::CollapsingHeader("Scene Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
-            static float camera_speed = 2.5f;
-            static float fov = 45.0f;
-            static float exposure = 1.0f;
-            
-            ImGui::SliderFloat("Camera Speed", &camera_speed, 0.1f, 10.0f);
-            ImGui::SliderFloat("Field of View", &fov, 10.0f, 120.0f);
-            ImGui::SliderFloat("Exposure", &exposure, 0.1f, 5.0f);
-            
-            if (ImGui::Button("Reset Camera", ImVec2(-1, 0))) {
-                // Reset camera logic will go here
-            }
-        }
-        
-        if (ImGui::CollapsingHeader("Ray Tracing Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-            static int max_bounces = 8;
-            static int samples_per_pixel = 16;
-            static bool use_denoising = true;
-            
-            ImGui::SliderInt("Max Bounces", &max_bounces, 1, 32);
-            ImGui::SliderInt("Samples/Pixel", &samples_per_pixel, 1, 256);
-            ImGui::Checkbox("Use Denoising", &use_denoising);
-        }
-        
-        if (ImGui::CollapsingHeader("Performance", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-            ImGui::Text("Frame Time: %.3f ms", 1000.0f / ImGui::GetIO().Framerate);
-            ImGui::Text("GPU: N/A"); // Will be filled with actual GPU info later
-        }
-        
-        ImGui::End();
-        
-        // Right Panel - Scene Hierarchy and Properties
-        ImGui::SetNextWindowPos(ImVec2(left_panel_width + viewport_width, 0));
-        ImGui::SetNextWindowSize(ImVec2(right_panel_width, work_size.y));
-        ImGui::Begin("Scene & Properties", nullptr, 
-                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | 
-                    ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
-        
-        if (ImGui::CollapsingHeader("Scene Hierarchy", ImGuiTreeNodeFlags_DefaultOpen)) {
-            // Scene tree will go here
-            if (ImGui::TreeNode("Camera")) {
-                ImGui::Text("Position: (0.0, 1.5, 2.0)");
-                ImGui::Text("Rotation: (0.0, 0.0, 0.0)");
-                ImGui::TreePop();
-            }
-            
-            if (ImGui::TreeNode("Lights")) {
-                if (ImGui::TreeNode("Main Light")) {
-                    static float light_color[3] = {1.0f, 1.0f, 1.0f};
-                    static float light_intensity = 1.0f;
-                    
-                    ImGui::ColorEdit3("Color", light_color);
-                    ImGui::SliderFloat("Intensity", &light_intensity, 0.0f, 10.0f);
-                    ImGui::TreePop();
-                }
-                ImGui::TreePop();
-            }
-            
-            if (ImGui::TreeNode("Objects")) {
-                ImGui::Text("Sphere 1");
-                ImGui::Text("Cube 1");
-                ImGui::Text("Plane 1");
-                ImGui::TreePop();
-            }
-        }
-        
-        if (ImGui::CollapsingHeader("Material Properties", ImGuiTreeNodeFlags_DefaultOpen)) {
-            static float roughness = 0.5f;
-            static float metallic = 0.0f;
-            static float ior = 1.45f;
-            static float material_color[3] = {0.8f, 0.2f, 0.2f};
-            
-            ImGui::ColorEdit3("Base Color", material_color);
-            ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f);
-            ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f);
-            ImGui::SliderFloat("IOR", &ior, 1.0f, 3.0f);
-        }
-        
-        ImGui::End();
-        
-        // Viewport area (empty for now - this is where your ray tracer will render)
-        // We'll draw a simple placeholder rectangle to show the viewport area
-        ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
-        ImVec2 viewport_min = ImVec2(left_panel_width, 0);
-        ImVec2 viewport_max = ImVec2(left_panel_width + viewport_width, work_size.y);
-        
-        // Draw viewport border
-        draw_list->AddRect(viewport_min, viewport_max, IM_COL32(100, 100, 100, 255), 0.0f, 0, 2.0f);
-        
-        // Draw placeholder text in viewport
-        ImVec2 text_size = ImGui::CalcTextSize("Viewport Area\n(Ray Tracer will render here)");
-        ImVec2 text_pos = ImVec2(
-            viewport_min.x + (viewport_width - text_size.x) * 0.5f,
-            viewport_min.y + (work_size.y - text_size.y) * 0.5f
-        );
-        draw_list->AddText(text_pos, IM_COL32(150, 150, 150, 255), "Viewport Area\n(Ray Tracer will render here)");
+void renderSceneControlsPanel() {
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImVec2 workSize = viewport->WorkSize;
+    
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(LEFT_PANEL_WIDTH, workSize.y));
+    ImGui::Begin("Tools & Controls", nullptr, 
+                ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | 
+                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
+    
+    ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+    
+    ImGui::End();
+}
 
-        // Rendering
-        glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
-        glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
-        glClear(GL_COLOR_BUFFER_BIT);
+void renderScenePropertiesPanel(float viewportWidth) {
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImVec2 workSize = viewport->WorkSize;
+    
+    ImGui::SetNextWindowPos(ImVec2(LEFT_PANEL_WIDTH + viewportWidth, 0));
+    ImGui::SetNextWindowSize(ImVec2(RIGHT_PANEL_WIDTH, workSize.y));
+    ImGui::Begin("Scene & Properties", nullptr, 
+                ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | 
+                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
+    
+    ImGui::End();
+}
 
-        // Render ImGui
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        glfwSwapBuffers(window);
+void renderViewport(RayTracer* rayTracer, float viewportWidth, float viewportHeight) {
+    static float topSectionHeight = viewportHeight * 0.25f;
+    static float bottomSectionHeight = viewportHeight * 0.25f;
+    
+    const float minSectionHeight = 50.0f;
+    const float splitterHeight = 8.0f;
+    
+    float middleSectionHeight = viewportHeight - topSectionHeight - bottomSectionHeight - 2 * splitterHeight;
+    
+    ImGui::SetNextWindowPos(ImVec2(LEFT_PANEL_WIDTH, 0));
+    ImGui::SetNextWindowSize(ImVec2(viewportWidth, viewportHeight));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::Begin("Viewport", nullptr, 
+                ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | 
+                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
+    
+    // Top Section
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
+    ImGui::BeginChild("TopSection", ImVec2(viewportWidth, topSectionHeight), true, ImGuiWindowFlags_None);
+    ImVec2 textSize = ImGui::CalcTextSize("Top Section");
+    ImVec2 textPos = ImVec2((viewportWidth - textSize.x) * 0.5f, (topSectionHeight - textSize.y) * 0.5f);
+    ImGui::SetCursorPos(textPos);
+    ImGui::TextDisabled("Top Section");
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    
+    // Top Splitter
+    ImGui::Button("##TopSplitter", ImVec2(viewportWidth, splitterHeight));
+    if (ImGui::IsItemActive()) {
+        topSectionHeight += ImGui::GetIO().MouseDelta.y;
+        topSectionHeight = std::max(minSectionHeight, topSectionHeight);
     }
-
-    // Cleanup
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-
-    glfwDestroyWindow(window);
-    glfwTerminate();
-
-    return 0;
+    
+    // Middle Section
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.1f, 0.1f, 0.1f, 1.0f));
+    ImGui::BeginChild("MiddleSection", ImVec2(viewportWidth, middleSectionHeight), true, ImGuiWindowFlags_None);
+    
+    if (rayTracer) {
+        rayTracer->render(g_camera.position, g_camera.target, g_camera.up);
+        GLuint renderedTexture = rayTracer->getOutputTexture();
+        
+        if (renderedTexture > 0) {
+            float aspectRatio = static_cast<float>(SCREEN_WIDTH) / static_cast<float>(SCREEN_HEIGHT);
+            float imageWidth = viewportWidth - 20.0f;
+            float imageHeight = imageWidth / aspectRatio;
+            
+            if (imageHeight > middleSectionHeight - 20.0f) {
+                imageHeight = middleSectionHeight - 20.0f;
+                imageWidth = imageHeight * aspectRatio;
+            }
+            
+            ImVec2 imagePos = ImVec2((viewportWidth - imageWidth) * 0.5f, (middleSectionHeight - imageHeight) * 0.5f);
+            ImGui::SetCursorPos(imagePos);
+            
+            ImGui::Image(reinterpret_cast<void*>(static_cast<intptr_t>(renderedTexture)), 
+                        ImVec2(imageWidth, imageHeight));
+        }
+    }
+    
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    
+    // Bottom Splitter
+    ImGui::Button("##BottomSplitter", ImVec2(viewportWidth, splitterHeight));
+    if (ImGui::IsItemActive()) {
+        bottomSectionHeight -= ImGui::GetIO().MouseDelta.y;
+        bottomSectionHeight = std::max(minSectionHeight, bottomSectionHeight);
+    }
+    
+    // Bottom Section
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
+    ImGui::BeginChild("BottomSection", ImVec2(viewportWidth, bottomSectionHeight), true, ImGuiWindowFlags_None);
+    textSize = ImGui::CalcTextSize("Bottom Section");
+    textPos = ImVec2((viewportWidth - textSize.x) * 0.5f, (bottomSectionHeight - textSize.y) * 0.5f);
+    ImGui::SetCursorPos(textPos);
+    ImGui::TextDisabled("Bottom Section");
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    
+    ImGui::End();
+    ImGui::PopStyleVar();
 }

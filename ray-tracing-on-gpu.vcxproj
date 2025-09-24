@@ -148,7 +148,6 @@
     </ClCompile>
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\RayTracer.cpp" />
-    <ClCompile Include="src\RayTracerApp.cpp" />
     <ClCompile Include="src\Shader.cpp" />
     <ClCompile Include="Libraries\include\imgui\imgui.cpp" />
     <ClCompile Include="Libraries\include\imgui\imgui_demo.cpp" />
@@ -160,7 +159,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\RayTracer.h" />
-    <ClInclude Include="src\RayTracerApp.h" />
     <ClInclude Include="src\Shader.h" />
     <ClInclude Include="Libraries\include\imgui\imgui.h" />
     <ClInclude Include="Libraries\include\imgui\imgui_internal.h" />
